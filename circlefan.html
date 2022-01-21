@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<!-- saved from url=(0060)https://hjalmtyr.github.io/WebGL-forrit/Angel/circlefan.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><script id="vertex-shader" type="x-shader/x-vertex">
+
+attribute vec4 vPosition;
+
+void
+main()
+{
+    gl_Position = vPosition;
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+
+precision mediump float;
+
+void
+main()
+{
+    gl_FragColor = vec4( 1.0, 0.0, 0.0, 1.0 );
+}
+</script>
+
+<script type="text/javascript" src="./circlefan_files/webgl-utils.js"></script>
+<script type="text/javascript" src="./circlefan_files/initShaders.js"></script>
+<script type="text/javascript" src="./circlefan_files/MV.js"></script>
+<script type="text/javascript" src="./circlefan_files/circlefan.js"></script>
+
+<style type="text/css" id="tts-styles">[data-tts-block-id].tts-active {background: rgba(206, 225, 255, 0.9) !important;} [data-tts-sentence-id].tts-active {background: rgba(0, 89, 191, 0.7) !important;}</style></head><body data-new-gr-c-s-check-loaded="14.1045.0" data-gr-ext-installed="">
+<div>
+    Circle Points  4 <input id="slider" type="range" min="4" max="100" step="1" value="4">
+    100
+    </div>
+<canvas id="gl-canvas" width="512" height="512">&gt;
+Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+
+
+</body><grammarly-desktop-integration data-grammarly-shadow-root="true"></grammarly-desktop-integration></html>
