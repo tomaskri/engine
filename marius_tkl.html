@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+
+</script><script id="vertex-shader" type="x-shader/x-vertex">
+
+  attribute vec4 vPosition;
+  uniform float jump; 
+  uniform bool erCoin; 
+  uniform bool erOvinur; 
+  uniform bool backgroundElement; 
+  uniform float timi; 
+  uniform vec2 randomCoin; 
+  void
+  main()
+  {
+      gl_Position = vPosition;
+      
+
+      if(erCoin){
+        gl_Position[1] += timi;
+        gl_Position[0] += randomCoin[0]; 
+        gl_Position[1] += randomCoin[1]; 
+        
+      }
+      else if(erOvinur){
+        gl_Position[0] += timi;
+      
+      }
+      else if(backgroundElement){
+        gl_Position[0] += timi/30.0;
+        gl_Position[0] *= jump; 
+      }
+      else{
+        gl_Position[1] += jump;
+      }
+  }
+  </script>
+  
+  <script id="fragment-shader" type="x-shader/x-fragment">
+  
+  precision mediump float;
+  
+  varying vec4 fColor;
+  uniform vec4 litur;
+
+  void
+  main()
+  {
+      gl_FragColor = litur;
+  }
+  </script>
+
+  <script type="text/javascript" src="./marius_tkl_files/webgl-utils.js"></script>
+  <script type="text/javascript" src="./marius_tkl_files/initShaders.js"></script>
+  <script type="text/javascript" src="./marius_tkl_files/MV.js"></script>
+  <script type="text/javascript" src="./marius_tkl_files/marius_tkl.js"></script>
+
+<body>
+  <P id="stigafjoldi">
+    Stig: 
+  </P>
+<canvas id="gl-canvas" width="1000" height="600">
+</body>
+</html>
