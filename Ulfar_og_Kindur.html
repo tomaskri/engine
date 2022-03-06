@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html>
-    
 
        
 </script><script id="vertex-shader" type="x-shader/x-vertex">
@@ -47,46 +46,46 @@ main()
             </canvas></td>
             
             <p style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif">
-                WOLVES & SHEEP
+                
             <td>
                 <p style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif"></p>
-                SIZE OF Simulation
+                World size
                 <div>
                     10<input id="sizeSlider" type="range" min="10" max="80" step="1" value="40">
                     80 
                 </div>
                 <br>
-                PERCENTAGE OF WOLVES AND SHEEP
+                Animal spawn chance at simulation start
                 <div>
-                    WOLF <input id="animalSlider" type="range" min="0" max="1" step="0.01" value="0.9">
-                    SHEEP  
+                    Only wolves <input id="animalSlider" type="range" min="0" max="1" step="0.01" value="0.9">
+                    Only sheep  
                 </div>
                 <br>
-                FRAMES PER TIMESTEP
+                Frames per timestep
                 <div>
                     2<input id="speedSlider" type="range" min="2" max="100" step="2" value="30">
                     100 
                 </div>
                 <br>
-                SHEEP EATEN BY WOLF BEFORE IT GIVES BIRTH
+                Sheep eaten before a wolf gives birth
                 <div>
                     1<input id="hungrySlider" type="range" min="1" max="20" step="1" value="3">
                     20 
                 </div>
                 <br>
-                TIMESTEPS BETWEEN BIRTH OF SHEEP 
+                Timesteps between birth of sheep
                 <div>
                     4<input id="birthTimeSlider" type="range" min="4" max="40" step="1" value="20">
                     40 
                 </div>
                 <br>
-                ENERGY FROM EATING SHEEP 
+                Energy from eating sheep
                 <div>
                     5<input id="wolfLifeSlider" type="range" min="5" max="100" step="1" value="20">
                     100 
                 </div>
                 <br>
-                VOLUME
+                Volume
                 <div>
                     0<input id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.2">
                     100 
@@ -101,7 +100,7 @@ main()
                         <button id="btnNewWolf">Spawn Wolf</button><p></p> 
                         <button id="btnNewSheep">Spawn Sheep</button><p></p> 
                         
-                        <button id="btnStartSim" style="height:100px;width:150px" style="font-size : 60px";>Start Simulation </button><p></p> 
+                        <button id="btnStartSim" style="height:100px;width:150px;background:green;font-size: 24px" style="font-size : 60px";>Start Simulation </button><p></p> 
                        
                 </div>
             </td>
@@ -112,5 +111,3 @@ main()
 
 
 <br>
-
-
