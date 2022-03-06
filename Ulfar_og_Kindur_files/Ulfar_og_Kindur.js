@@ -223,6 +223,7 @@ window.onload = function init()
         document.getElementById("btnStartSim").disabled = true; 
         document.getElementById("sizeSlider").disabled = true; 
         document.getElementById("animalSlider").disabled = true; 
+        console.log(division);
 
         heimur = new grid(); 
         for(let i = 0; i < animalNum; i++){
