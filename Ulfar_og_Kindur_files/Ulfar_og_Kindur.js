@@ -48,7 +48,7 @@ var animalPercent = 0.9;
 
 
 
-var division = 20;
+var division = 40;
 var simSpeed = 30; 
 var birthSpeed = 20; 
 var animalNum = Math.floor((division*division*division)/100); 
