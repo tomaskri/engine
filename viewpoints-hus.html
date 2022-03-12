@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+
+</script><script id="vertex-shader" type="x-shader/x-vertex">
+
+attribute  vec4 vPosition;
+
+uniform mat4 projection;
+uniform mat4 modelview;
+
+void main() 
+{
+    gl_Position = projection * modelview * vPosition;
+} 
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+
+precision mediump float;
+   
+uniform vec4 fColor;
+
+void
+main()
+{
+    gl_FragColor = fColor;
+}
+</script>
+
+<script type="text/javascript" src="./viewpoints-hus_files/webgl-utils.js"></script>
+<script type="text/javascript" src="./viewpoints-hus_files/initShaders.js"></script>
+<script type="text/javascript" src="./viewpoints-hus_files/MV.js"></script>
+<script type="text/javascript" src="./viewpoints-hus_files/viewpoints-hus.js"></script>
+
+</head><body data-new-gr-c-s-check-loaded="14.1052.0" data-gr-ext-installed="">
+<h4>Sláið á 1, 2, ..., 8 til að skipta um sjónarhorn.  Núverandi sjónarhorn er fyrir neðan myndina</h4>
+<h4>Örvalyklar hækka og lækka staðsetningu áhorfanda (fer eftir sjónarhorni)</h4>
+<canvas id="gl-canvas" width="700" height="700">
+<div id="Viewpoint">7: Horft aftur úr bíl fyrir framan</div>
+<div id="Height">Viðbótarhæð: 0</div>
+   
+<br>
+
+
+
+</canvas></body><grammarly-desktop-integration data-grammarly-shadow-root="true"></grammarly-desktop-integration></html>
