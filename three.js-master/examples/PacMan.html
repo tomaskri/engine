@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js - misc - octree collisions</title>
+		<title>three.js - misc - Pacman octree collisions</title>
 		<meta charset=utf-8 />
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<link type="text/css" rel="stylesheet" href="main.css">
@@ -43,18 +43,6 @@
 			import { Capsule } from './jsm/math/Capsule.js';
 
 			import { GUI } from './jsm/libs/lil-gui.module.min.js';
-
-			import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
-
-			import { RenderPass } from './jsm/postprocessing/RenderPass.js';
-
-			import { ShaderPass } from './jsm/postprocessing/ShaderPass.js';
-			
-			import { UnrealBloomPass } from './jsm/postprocessing/UnrealBloomPass.js';
-
-			import { LuminosityShader } from './jsm/shaders/LuminosityShader.js';
-			
-			import { SobelOperatorShader } from './jsm/shaders/SobelOperatorShader.js';
 
 			import { PositionalAudioHelper } from './jsm/helpers/PositionalAudioHelper.js';
 
@@ -1271,24 +1259,16 @@
 					ghost_names_and_deviations.push({name: "Inky", dev: 6});
 					ghost_names_and_deviations.push({name: "Clyde", dev: 8});
 
-					//bætir við hlutnum í senuna
-					//scene.add( gltf.scene );
+					// Bætir við hlutnum í senuna
 					for(let i = 0; i<ghosts.length; i++){
 						ghosts[i].traverse( child => {
 							if ( child.isMesh ) {
 								child.castShadow = true;
 								child.receiveShadow = true;
-								// if ( child.material.map ) {
-								// 	child.material.map.anisotropy = 4;
-								// }
 							}
 							if(child.name == "ghostTopScared" || child.name == "ghosteyeBallsScared"){
 								child.visible = false;
 							}
-
-							/* if (child.isGroup){
-								
-							} */
 
 						} );
 						ghosts[i].visible = true; 
