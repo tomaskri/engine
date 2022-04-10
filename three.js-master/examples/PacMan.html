@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js - misc - octree collisions</title>
+		<meta charset=utf-8 />
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+	<body>
+		<div id="info">
+			WASD to move and E to change POV<br />
+			<!-- WASD TO MOVE<br/>
+			WASD to move and SPACE to jump -->
+		</div>
+		<div id="container"></div>
+
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js"
+				}
+			}
+		</script>
+	<!-- 	<div id="overlay">
+			<button id="startButton">Play</button>
+		</div> -->
+
+		<script type="module">
+
+			import * as THREE from 'three';
+
+			import Stats from './jsm/libs/stats.module.js';
+
+			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+
+			import { Octree } from './jsm/math/Octree.js';
+			import { OctreeHelper } from './jsm/helpers/OctreeHelper.js';
+
+			import { Capsule } from './jsm/math/Capsule.js';
+
+			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+
+			import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
+
+			import { RenderPass } from './jsm/postprocessing/RenderPass.js';
+
+			import { ShaderPass } from './jsm/postprocessing/ShaderPass.js';
+			
+			import { UnrealBloomPass } from './jsm/postprocessing/UnrealBloomPass.js';
+
+			import { LuminosityShader } from './jsm/shaders/LuminosityShader.js';
+			
+			import { SobelOperatorShader } from './jsm/shaders/SobelOperatorShader.js';
+
+			import { PositionalAudioHelper } from './jsm/helpers/PositionalAudioHelper.js';
+
+			import { TextGeometry } from './jsm/geometries/TextGeometry.js';
+
+			import { FontLoader } from './jsm/loaders/FontLoader.js';
+
+			//import { MeshPhongMaterial } from './jsm/shaders/SobelOperatorShader.js';
+
+
+			const second_camera_offset = [-6, 3];  // How far back (negative) & how much higher.
+			const clock = new THREE.Clock();
+			const params = {
+				exposure: 1,
+				bloomStrength: 1.5,
+				bloomThreshold: 0.4,
+				bloomRadius: 0.8
+			};
+			
+			const scene = new THREE.Scene();
+			// const scenemap = new THREE.Scene();
+			scene.background = new THREE.Color( 0x000000 );
+			scene.fog = new THREE.Fog( 0x000000, 0, 20 );
+			
+			const camera = new THREE.PerspectiveCamera( 100, window.innerWidth / window.innerHeight, 0.1, 50 );
+			const second_camera = new THREE.PerspectiveCamera( 70, window.innerWidth/window.innerHeight, 0.1, 60);
+			const board_camera = new THREE.PerspectiveCamera( 180, window.innerWidth/window.innerHeight, 0.1, 50);  
+			camera.rotation.order = 'YXZ';
+			second_camera.rotation.order = "YXZ";
+			second_camera.rotation.set(-Math.PI/5,0,0);
+			board_camera.rotation.order = "YXZ";
+			board_camera.rotation.set(-Math.PI/5,0,0);
+			
+			board_camera.position.copy(new THREE.Vector3(40, 40, 4.0));
+			var cameras = [];
+			
+			cameras.push(camera);
+			cameras.push(second_camera);
+			cameras.push(board_camera);
+
+			var score = 0;
+			var respawnTime = 1; 
+			var lives = 3; 
+			var text2 = document.createElement('div');
+			text2.style.position = 'absolute';
+			//text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
+			text2.style.width = 100;
+			text2.style.height = 100;
+			//text2.style.backgroundColor = "blue";
+			text2.innerHTML = "SCORE: " + score;
+			text2.style.top = 50 + 'px';
+			text2.style.left = 5 + 'px';
+			document.body.appendChild(text2);
+			
+
+			const listener = new THREE.AudioListener();
+			/* for(let i = 0; i<cameras.length; i++){
+				cameras[i].add( listener );
+			} */
+			
+
+			// create the PositionalAudio object (passing in the listener)
+			
+
+			// load a sound and set it as the PositionalAudio object's buffer
+			
+
+		/* 	const startButton = document.getElementById( 'startButton' );
+			startButton.addEventListener( 'click', animate );
+			 */
+
+
+		
+			// second_camera.rotation.order = "YXZ";
+			
+			const fillLight1 = new THREE.HemisphereLight( 0xb0b0b0, 0x7a7a7a, 0.5 );
+			fillLight1.position.set( 2, 1, 1 );
+			scene.add( fillLight1 );
+			
+			
+		 	const directionalLight = new THREE.DirectionalLight( 0xffffff, 1.0 );
+			directionalLight.position.set( 8, 25, -8 );
+			directionalLight.castShadow = true;
+			directionalLight.shadow.camera.near = 0.01;
+			directionalLight.shadow.camera.far = 500;
+			directionalLight.shadow.camera.right = 70;
+			directionalLight.shadow.camera.left = - 70;
+			directionalLight.shadow.camera.top	= 70;
+			directionalLight.shadow.camera.bottom = - 70;
+			directionalLight.shadow.mapSize.width = 2048;
+			directionalLight.shadow.mapSize.height = 2048;
+			directionalLight.shadow.radius = 2;
+			directionalLight.shadow.bias = - 0.00006;
+			directionalLight.name = "MainLight";
+			scene.add( directionalLight ); 
+
+			const container = document.getElementById( 'container' );
+			
+			const renderer = new THREE.WebGLRenderer( { antialias: false, stencil: false} );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.shadowMap.enabled = true;
+			renderer.shadowMap.type = THREE.VSMShadowMap;
+			renderer.outputEncoding = THREE.sRGBEncoding;
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			renderer.autoClear = true; 
+			renderer.autoClearColor  = false; 
+			renderer.autoClearDepth = false;
+			//renderer.toneMapping = THREE.ReinhardToneMapping;
+			container.appendChild( renderer.domElement );
+			
+			/* renderer.setScissor(300,300,300,300);
+			renderer.setScissorTest(true);  */
+			// renderer.autoClearStencil = false;
+			container.appendChild( renderer.domElement );
+			
+			const stats = new Stats();
+			stats.domElement.style.position = 'absolute';
+			stats.domElement.style.top = '0px';
+			container.appendChild( stats.domElement ); //wattap, hæ
+			
+			const GRAVITY = 30;
+			var cameraRotation = 0;
+			var cameraRotating = 0;
+			// var cameraRotationSpeed = 20.0; 
+			// var cameraRotationSpeed = 0.1; // seconds for turning 90°
+			var cameraRotationSpeed;  // Will be used to set the frames needed for turning.
+			const min_no_of_rotation_frames = 2;
+
+			var NUM_SPHERES = 0;
+			const SPHERE_RADIUS = 0.2;
+			var mixer = undefined; 
+			var song = new Audio('pacmanSounds/pacmanSong.mp3');
+			var waka1 = new Audio('pacmanSounds/waka1.wav');
+			var waka2 = new Audio('pacmanSounds/waka2.wav');
+			var superWaka = new Audio('pacmanSounds/superWaka.ogg');
+			var mixer2 = undefined; 
+			var basicDir = [];
+			basicDir.push(new THREE.Vector3(1.0,0.0,0.0));  // East
+			basicDir.push(new THREE.Vector3(0.0,0.0,1.0));  // South
+			basicDir.push(new THREE.Vector3(-1.0,0.0,0.0)); // West
+			basicDir.push(new THREE.Vector3(0.0,0.0,-1.0)); // North
+			const basicDirKeys = ["KeyD", "KeyS", "KeyA", "KeyW"];
+			var player_direction_index = 3;
+			var keyDown; 
+			var ghosts = [];
+			var waka = true; 
+			const mapHeight = 21; 
+			const mapWidth = 20;
+			var stuck = false; 
+			const ghostHome = new THREE.Vector3(20.0,0.0,-22.0); // NOTE: was -24.0
+			
+		
+			
+			const STEPS_PER_FRAME = 5;
+			
+			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );
+			const superSphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS*2.5, 5 );
+			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xbbbb44 } );
+			
+			const spheres = [];
+			let sphereIdx = 0;
+			const loader = new GLTFLoader();
+			
+			const worldOctree = new Octree();
+			const worldOctreeForGhosts = new Octree();
+			
+			const playerCollider = new THREE.Sphere( new THREE.Vector3( 20, 0.35, -10), 0.7 );
+			
+
+			let composer, effectSobel;
+			
+			const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
+			bloomPass.threshold = params.bloomThreshold;
+			bloomPass.strength = params.bloomStrength;
+			bloomPass.radius = params.bloomRadius;
+			
+			effectSobel = new ShaderPass( SobelOperatorShader );
+			/* effectSobel.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
+			effectSobel.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
+			 */
+			function addpasses(composer, renderscene){
+				composer.addPass( effectSobel );
+				composer.addPass( renderscene );
+				composer.addPass( bloomPass );
+				return composer;
+			}
+			const renderScene = new RenderPass( scene, cameras[0] );
+			const renderScene_second_cam = new RenderPass(scene, cameras[1]);
+			// const renderScene_board_cam = new RenderPass(scene, cameras[2]);
+			composer = new EffectComposer( renderer );
+			composer.addPass( effectSobel );
+			composer.addPass( renderScene );
+			composer.addPass( bloomPass );
+			
+			var composers = [];
+			composers.push(addpasses(new EffectComposer(renderer), renderScene));
+			composers.push(addpasses(new EffectComposer(renderer), renderScene_second_cam));
+			composers.push(addpasses(new EffectComposer(renderer), renderScene_second_cam));
+			
+			cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
+			const GhostCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
+
+
+			const playerVelocity = new THREE.Vector3();
+			const playerDirection = new THREE.Vector3();
+			
+			let playerOnFloor = false;
+			let mouseTime = 0;
+			
+			
+			
+			const keyStates = {};
+			
+			var textloader = new FontLoader();
+			// var textObj = undefined;
+			var textObjects = [];
+			textloader.load("fonts/gentilis_bold.typeface.json", function(font) {
+				var params = {
+					font: font,
+					size: 0.5,
+					height: 0.2,
+					curveSegments: 1,
+					bevelThickness: 0.02,
+					bevelSize: 0.02,
+					bevelEnabled: true
+				}
+
+				var textGeo = new TextGeometry("200", params);
+				var textGeo1 = new TextGeometry("400", params);
+				var textGeo2 = new TextGeometry("800", params);
+				var textGeo3 = new TextGeometry("1600", params);
+				textGeo.translate(-0.5,0,0);
+				textGeo1.translate(-0.5,0,0);
+				textGeo2.translate(-0.5,0,0);
+				textGeo3.translate(-0.6,0,0);
+
+				var textMat = new THREE.MeshLambertMaterial({color: 0xFFFFFF});
+				textMat.transparent = true;
+				textMat.opacity = 1.0;
+
+				function add_textobj(text_geo, name){
+					var textMesh = new THREE.Mesh(text_geo, textMat);
+					
+					textMesh.position.x = -100; 
+					textMesh.position.y = 0; 
+					textMesh.position.z = 0; 
+					textMesh.name = name;
+					scene.add(textMesh);
+					textObjects.push(textMesh);
+				}
+
+				add_textobj(textGeo, "scoreText200");
+				add_textobj(textGeo1, "scoreText400");
+				add_textobj(textGeo2, "scoreText800");
+				add_textobj(textGeo3, "scoreText1600");
+
+				// var textMesh = new THREE.Mesh(textGeo, textMat);
+				// textMesh.position.x = 0; 
+				// textMesh.position.y = 0; 
+				// textMesh.position.z = 0; 
+				// textMesh.name = "scoreText200";
+				// textObj = textMesh;
+				// scene.add(textObj);
+				// textObjects.push(textObj);
+
+				// var textMesh = new THREE.Mesh(textGeo, textMat);
+				// textMesh.position.x = 0; 
+				// textMesh.position.y = 0; 
+				// textMesh.position.z = 0; 
+				// textMesh.name = "scoreText400";
+				// scene.add(textMesh);
+				// textObjects.push(textMesh);
+
+				// var textMesh = new THREE.Mesh(textGeo, textMat);
+				// textMesh.position.x = 0; 
+				// textMesh.position.y = 0; 
+				// textMesh.position.z = 0; 
+				// textMesh.name = "scoreText800";
+				// scene.add(textMesh);
+				// textObjects.push(textMesh);
+
+				// var textMesh = new THREE.Mesh(textGeo, textMat);
+				// textMesh.position.x = 0; 
+				// textMesh.position.y = 0; 
+				// textMesh.position.z = 0; 
+				// textMesh.name = "scoreText1600";
+				// scene.add(textMesh);
+				// textObjects.push(textMesh);
+
+			});
+
+			/* const textGeo = new THREE.TextGeometry("100", {
+			size: 10,
+			height: 2
+
+			}); 
+			const textMesh = new THREE.Mesh(textGeo);
+			textMesh.position.set(new THREE.Vector3(4,4,4));
+			scene.add(textMesh); */
+
+			
+			
+			const vector1 = new THREE.Vector3();
+			const vector2 = new THREE.Vector3();
+			const vector3 = new THREE.Vector3();
+			
+			document.addEventListener( 'keydown', ( event ) => {
+				keyStates[ event.code ] = true;
+				keyDown = true; 
+			} );
+
+			document.addEventListener( 'keyup', ( event ) => {
+				keyStates[ event.code ] = false;
+				keyDown = false; 
+			} );
+			
+			container.addEventListener( 'mousedown', () => {
+				document.body.requestPointerLock();
+				mouseTime = performance.now();
+			} );
+
+			document.addEventListener( 'mouseup', () => {
+				/* if ( document.pointerLockElement !== null ) throwBall(); */
+			} );
+
+			document.body.addEventListener( 'mousemove', ( event ) => {
+				if ( document.pointerLockElement === document.body ) {
+					/* cameras[0].rotation.y -= event.movementX / 500;
+					cameras[0].rotation.x -= event.movementY / 500;
+					cameras[1].rotation.y -= event.movementX / 500;
+					cameras[1].rotation.x -= event.movementY / 500;
+					cameras[2].rotation.y -= event.movementX / 500;
+					cameras[2].rotation.x -= event.movementY / 500; */
+				}
+			} );
+			
+			window.addEventListener( 'resize', onWindowResize );
+
+			function onWindowResize() {
+				
+				cameras[0].aspect = window.innerWidth / window.innerHeight;
+				cameras[0].updateProjectionMatrix();
+				cameras[1].aspect = window.innerWidth / window.innerHeight;
+				cameras[1].updateProjectionMatrix();
+				cameras[2].aspect = window.innerWidth / window.innerHeight;
+				cameras[2].updateProjectionMatrix();
+				
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				
+			}
+			
+			function playerCollisions() {
+
+				const result = worldOctree.sphereIntersect( playerCollider );
+				
+				playerOnFloor = false;
+				stuck = false;
+				if ( result ) {
+					playerOnFloor = result.normal.y > 0;
+					
+					if ( ! playerOnFloor ) {
+						playerVelocity.addScaledVector( result.normal, - result.normal.dot( playerVelocity ) );
+					}
+					
+					if (result.normal.x != 0 ||  result.normal.z != 0){
+						stuck = true; 
+					}
+					playerCollider.translate( result.normal.multiplyScalar( result.depth ) );
+				}
+				//console.log(stuck);
+			}
+			
+			let NomGroup = new THREE.Group();
+			NomGroup.name = "NomNom";
+			function fillMap(){
+				let raycaster = new THREE.Raycaster();
+				let upvec = new THREE.Vector3(0,1,0);
+				for(let i = 1; i<mapWidth; i++){
+					for(let j = 1; j<mapHeight; j++){
+						//create sphere; 
+						//const sphere = undefined; 
+
+						const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+						
+						sphere.castShadow = true;
+						sphere.receiveShadow = true;
+						sphere.position.set(2*i, 0.6, -2*j);
+						sphere.name = "Sphere_" + NUM_SPHERES; 
+						
+						
+						raycaster.set(sphere.position.clone().sub(new THREE.Vector3(0, sphere.position.y, 0)).add(upvec.clone().multiplyScalar(5)), upvec.clone().negate());
+						
+						let dist = worldOctree.rayIntersect(raycaster.ray).distance;
+						// Plane at height 4 represents Superfruit
+						// Plane at height 2.1 represents Boxes, no fruit
+						// Ground at height 0 represents ordinary fruit
+						console.log(dist);
+						sphere.super = false;
+						if (dist < 1.5){
+							sphere.geometry = superSphereGeometry; 
+							sphere.material = sphere.material.clone();
+							sphere.material.color = {r: 1, g: 1, b: 1}
+							sphere.super = true; 
+							NomGroup.add( sphere );
+							NUM_SPHERES++;
+							
+						} else if (dist > 3){
+							NomGroup.add( sphere );
+							NUM_SPHERES++;
+						}
+						spheres.push( {
+							mesh: sphere,
+							collider: new THREE.Sphere( new THREE.Vector3( 2*i, 0.6, -2*j ), SPHERE_RADIUS ),
+							name: sphere.name,
+						});
+					}
+				}
+				scene.add(NomGroup);
+				console.log("the number of spheres is: " + NUM_SPHERES);
+			}
+			
+			function updatePlayer( deltaTime ) {
+
+				let damping = Math.exp( - 4 * deltaTime ) - 1;
+
+				if ( ! playerOnFloor ) {
+					
+					playerVelocity.y -= GRAVITY * deltaTime;
+
+					// small air resistance
+					damping *= 0.1;
+					
+				}
+				
+				playerVelocity.addScaledVector( playerVelocity, damping );
+				// playerVelocity.multiplyScalar((1-damping));
+				// if (cameraRotating != 0){
+				// 	playerVelocity.sub(playerVelocity);
+				// 	console.log("playerVelocity: ");
+				// 	console.log(playerVelocity);
+				// }
+				// else{  // Set speed to constant value (normalize and scale)
+				// 	// playerDirection;
+					let temp = getSideVector();
+					// let temp2 = new THREE.Vector3(Math.round(temp.x*temp.x), Math.round(temp.y*temp.y), Math.round(temp.z*temp.z));
+					let temp2 = new THREE.Vector3(Math.abs(temp.x), Math.abs(temp.y), Math.abs(temp.z));
+					// let temp = basicDir[player_direction_index].clone();
+					// let temp2 = new THREE.Vector3(Math.abs(temp.x), Math.abs(temp.y), Math.abs(temp.z));
+					// console.log(temp2);
+					let temp_campos = cameras[0].position.clone();
+					let temp3 = temp_campos.clone().multiplyScalar(0.5);
+					let temp4 = new THREE.Vector3(Math.round(temp3.x), Math.round(temp3.y), Math.round(temp3.z)).clone().multiplyScalar(2);
+					// console.log(temp4.clone().sub(temp_campos));
+					let temp5 = temp4.clone().sub(temp_campos);
+					let temp6 = new THREE.Vector3(temp5.x*temp2.x, temp5.y*temp2.y, temp5.z*temp2.z);
+					// temp6.multiply(temp6.clone().negate().multiplyScalar(0.8));
+					// temp6.normalize();
+					// let temp7 = temp6.clone().multiplyScalar(playerVelocity.clone().dot(temp6));
+					// temp7.addScaledVector(temp7, damping);
+					// playerVelocity.addVectors(temp7, playerVelocity.clone().sub(temp6.clone().multiplyScalar(playerVelocity.clone().dot(temp6))))
+					// playerVelocity = new THREE.Vector3(playerVelocity.x*temp6.x, playerVelocity.y*temp6.y, playerVelocity.y*temp6.y);
+					playerVelocity.addScaledVector(temp6, deltaTime*20);
+				// }
+				
+				const deltaPosition = playerVelocity.clone().multiplyScalar( deltaTime );
+				playerCollider.translate( deltaPosition );
+				if (playerCollider.center.x > 2*(mapWidth)+1) {
+					playerCollider.center.x -= 2*(mapWidth+1);
+					// playerCollider..x -= 2*(mapWidth+1);
+				} 
+				else if (playerCollider.center.x < -1) {
+					playerCollider.center.x += 2*(mapWidth+1);
+					// playerCollider.start.x += 2*(mapWidth+1);
+				} 
+				if(pacmanMesh){
+					pacmanMesh.position.copy(playerCollider.center); 
+					pacmanMesh.getObjectByName("listener").position.copy(playerCollider.center); 
+				}
+				
+				playerCollisions();
+				
+				cameras[0].position.copy(  playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
+				if (cameraToUse == 1) offset_second_camera(cameras[1], cameras[0]);
+				
+			}
+			
+			function playerSphereCollision( sphere, index ) {
+				if (!sphere) return;
+				
+				const center = playerCollider.center.clone();				
+				const sphere_center = sphere.collider.center;
+				
+				const r = playerCollider.radius + sphere.collider.radius;
+				const r2 = r * r;
+					
+				const d2 = center.distanceToSquared( sphere_center );
+
+				if ( d2 < r2 ) {
+
+					// Pacman Eats Fruit Collision
+					const object = scene.getObjectByName( sphere.name );
+			
+					if (object.super) {
+						score += 50;
+						superWaka.play();
+						activateSuperMode();
+					} else {
+						(waka ? waka1 : waka2).play();
+						waka = !waka;
+						score += 10;
+					}
+					NUM_SPHERES--;
+					object.removeFromParent();
+					spheres.splice(index, 1);
+				}
+
+				if (NUM_SPHERES == 0){
+					gameWon();
+				}
+			}
+
+			function gameWon(){
+				scene.getObjectByName("NomNom").removeFromParent();
+				fillMap();
+			}
+
+			var supermode_multiplier = 1;
+			var supermode_power = 0;
+			function activateSuperMode(){
+				supermode_multiplier = 1;
+				supermode_power = 0;
+				console.log("Super mode enabled?");
+				// console.log(basicDir[player_direction_index]);
+				console.log(getForwardVector());
+
+				ghosts.forEach(ghost => {
+					if(!ghost.goingHome){
+						ghost.getObjectByName("ghostTopScared").visible = true;
+						ghost.getObjectByName("ghostTopNormal").visible = false;
+						ghost.getObjectByName("ghostTopNormal").sound.pause();
+						ghost.getObjectByName("ghostFrown").visible = true;
+						ghost.getObjectByName("ghosteyeBallsScared").visible = true;
+						ghost.getObjectByName("ghosteyeBallsNormal").visible = false; //þetta var true örugglega óvart
+						ghost.getObjectByName("ghostBot").material.color = ghost.ScaredMaterial.color;	//virkar
+						ghost.getObjectByName("ghostBot").material.emissive = ghost.ScaredMaterial.emissive; //virkar
+						ghost.isScared = true; 
+						ghost.scaredTime = 50; 
+					}
+				});
+				console.log("Super mode finalized?");
+			}
+
+			function deActivateSuperMode(ghost){
+				console.log("Super mode deactivating?");
+		
+				ghost.getObjectByName("ghostTopScared").visible = false;
+				ghost.getObjectByName("ghostTopScared").material.emissive = scared_emissive;
+				ghost.getObjectByName("ghostTopNormal").visible = true;
+				ghost.getObjectByName("ghostTopNormal").sound.play();
+				ghost.getObjectByName("ghostFrown").visible = false;
+				ghost.getObjectByName("ghosteyeBallsScared").visible = false;
+				ghost.getObjectByName("ghosteyeBallsNormal").visible = true;
+				ghost.getObjectByName("ghostBot").visible = true; 
+				ghost.getObjectByName("ghostFrown").visible = true;
+				ghost.getObjectByName("ghostBot").material.color = ghost.NormalMaterial.color; 
+				ghost.getObjectByName("ghostBot").material.emissive = ghost.NormalMaterial.emissive;
+				ghost.getObjectByName("ghostTopNormal").material.color = ghost.NormalMaterial.color;
+				ghost.getObjectByName("ghostTopNormal").material.emissive = ghost.NormalMaterial.emissive;  
+				ghost.isScared = false; 
+				ghost.goingHome = false; 
+				ghost.scaredTime = 0; 
+				
+				
+				console.log("Super mode deactivated?");
+			}
+
+			const MAX_SCORE_DISPLAY_TIME = 1.5;  // sec
+			var scoreTextTimes = [0,0,0,0];
+			var PlayerDied = false;
+			function playerGhostCollision(ghost) {
+				if (!ghost) return;
+				//console.log(ghost.collider);
+				const center = playerCollider.center.clone();				
+				const ghost_center = ghost.collider.end.clone().add(ghost.collider.start).multiplyScalar(0.5);
+				
+				const r = playerCollider.radius + ghost.collider.radius;
+				const r2 = r * r;
+				
+				const d2 = center.distanceToSquared( ghost_center );
+
+				if ( d2 < r2 ) {
+					
+					console.log("þú klesstir á draug");
+					if(!ghost.isScared){
+						PlayerDied = true;
+						// playerDeath()	
+					}
+					else if(!ghost.goingHome){
+						// score += 200*supermode_multiplier++;
+						score += 200*Math.pow(2, supermode_power++);
+						ghost.goingHome = true; 
+						ghost.getObjectByName("ghostBot").visible = false; 
+						
+						ghost.getObjectByName("ghostTopScared").visible = false;
+						ghost.getObjectByName("ghostFrown").visible = false;
+						
+						textObjects[supermode_power-1].position.x = (ghost.position.x); 
+						textObjects[supermode_power-1].position.y = (ghost.position.y) + 1; 
+						textObjects[supermode_power-1].position.z = (ghost.position.z); 
+						textObjects[supermode_power-1].rotation.copy(cameras[cameraToUse < 2 ? 0 : 1].rotation);
+						textObjects[supermode_power-1].material = ghost.NormalMaterial.clone(); 
+						textObjects[supermode_power-1].material.transparent = true; 
+						textObjects[supermode_power-1].scale.copy(new THREE.Vector3(1.0, 1.0, 1.0).multiplyScalar(cameraToUse == 2 ? 2 : 1)); 
+
+						scoreTextTimes[supermode_power-1] = MAX_SCORE_DISPLAY_TIME;
+						
+					}
+					
+					//scene.add(TextObj);
+					//playerCollider.translate(-100,-100,-100);
+				}
+			}
+
+			function scoreHover(deltaTime){
+				for (var i = 0; i < scoreTextTimes.length; i++){
+					if (scoreTextTimes[i] > -1){
+						textObjects[i].translateY(deltaTime/3);
+						textObjects[i].material.opacity = Math.min(1.0, 3*scoreTextTimes[i]);
+						scoreTextTimes[i] -= deltaTime;
+					}
+				}
+			}
+			
+			function playerDeath(){
+				PlayerDied = false;
+				lives--; 
+				playerCollider.center.set( 20, 0.35, -10);
+				cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)));
+				cameras[0].rotation.set( 0, 0, 0 );
+				pacmanMesh.rotation.set( 0, Math.PI*0.5, 0 ); 
+				pacmanMesh.cameraRotating = 0;
+				player_direction_index = 3;
+
+				// second_camera.position.copy( camera.position );
+				offset_second_camera(cameras[1], cameras[0]);
+				cameras[1].rotation.set(-Math.PI/5,0,0);
+				if (cameraToUse == 2) {
+					cameras[1].position.copy(new THREE.Vector3(20,35,0));
+					cameras[1].rotation.set(-1.1,0,0);
+				}
+				if(lives == 0){
+					gameOver(); 
+				}
+
+				console.log(ghosts);
+				var num = 0; 
+				for (const elem of ghost_names_and_deviations){
+					console.log("Fired!");
+					let ghost = scene.getObjectByName(elem.name);
+					
+					ghost.position.copy(ghost_first_placing_pos.clone().add(new THREE.Vector3(elem.dev, 0.0, 0.0)));
+					// ghost.collider.position.set(ghost.position);
+					delete ghost.collider;
+					
+					
+					ghost.collider = new Capsule( new THREE.Vector3(ghost.position.x,ghost.position.y-1.3,ghost.position.z ), new THREE.Vector3(ghost.position.x,ghost.position.y,ghost.position.z) , 0.4 );
+					deActivateSuperMode(ghost);
+					respawnTime = 2; 
+
+					num++; 
+					console.log(ghost.can_turn);
+					ghost.can_turn = true; 
+					console.log(ghost.can_turn);
+					//ghost.is_turning = false; 
+					/* 	ghost.direction = 3;
+					ghost.cameraRotation = 0;
+					ghost.cameraRotating = 0;	 */
+				}
+				console.log(ghosts);
+
+			}
+
+			function gameOver(){
+				scene.getObjectByName("NomNom").removeFromParent(); 
+				NUM_SPHERES = 0; 
+				spheres.length = 0; 
+				NomGroup.clear();
+				lives = 3; 
+				score = 0; 
+				fillMap();  
+			}
+			
+			function spheresCollisions() {
+				
+				for ( let i = 0, length = spheres.length; i < length; i ++ ) {
+					
+					const s1 = spheres[ i ];
+					
+					for ( let j = i + 1; j < length; j ++ ) {
+
+						const s2 = spheres[ j ];
+						
+						const d2 = s1.collider.center.distanceToSquared( s2.collider.center );
+						const r = s1.collider.radius + s2.collider.radius;
+						const r2 = r * r;
+						
+						if ( d2 < r2 ) {
+							
+							const normal = vector1.subVectors( s1.collider.center, s2.collider.center ).normalize();
+							const v1 = vector2.copy( normal ).multiplyScalar( normal.dot( s1.velocity ) );
+							const v2 = vector3.copy( normal ).multiplyScalar( normal.dot( s2.velocity ) );
+							
+							s1.velocity.add( v2 ).sub( v1 );
+							s2.velocity.add( v1 ).sub( v2 );
+							
+							const d = ( r - Math.sqrt( d2 ) ) / 2;
+
+							s1.collider.center.addScaledVector( normal, d );
+							s2.collider.center.addScaledVector( normal, - d );
+							
+						}
+						
+					}
+					
+				}
+				
+			}
+			
+			function updateSpheres( deltaTime ) {
+
+				spheres.forEach( (sphere, index) => {
+					
+					playerSphereCollision( sphere, index );
+					
+				} );
+			}
+
+			function getForwardVector() {
+
+				cameras[0].getWorldDirection( playerDirection );
+				playerDirection.y = 0;
+				playerDirection.normalize();
+
+				return playerDirection;
+			}
+
+			function offset_second_camera(second_cam, first_cam){
+				second_cam.position.copy(first_cam.position.clone().add(getForwardVector().clone().multiplyScalar(second_camera_offset[0]).add(new THREE.Vector3(0,second_camera_offset[1],0))));
+			}
+			offset_second_camera(cameras[1], cameras[0]);
+			// offset_second_camera(cameras[2], cameras[1]);
+			// board_camera = second_camera.clone();
+			
+			function getSideVector() {
+
+				cameras[0].getWorldDirection( playerDirection );
+				playerDirection.y = 0;
+				playerDirection.normalize();
+				playerDirection.cross( cameras[0].up );
+				
+				return playerDirection;
+			}
+
+
+			function educatedMovement(ghost, possibleDir, location, new_direction){
+				var maxDot = 0;
+				var bestDir = -1;
+				var vectorHome;
+				for(let i = 0; i < possibleDir.length; i++){
+					vectorHome = location.clone().sub(ghost.position);
+					console.log(vectorHome);
+					var tempDot = vectorHome.dot(basicDir[possibleDir[i]]);
+				
+					if(tempDot > maxDot){
+						maxDot = tempDot; 
+						bestDir = i; 
+					} 
+				}
+				
+				//console.log("það er best að fara í átt " + bestDir, "innfeldið er" + maxDot);
+				if (bestDir != -1){
+					new_direction = possibleDir[bestDir];
+				}
+				return new_direction;
+			}
+			
+		
+			function moveGhosts(deltaTime){
+				respawnTime-=deltaTime; 
+				if(respawnTime >0) return; 
+				if(ghosts[0] == undefined){
+					return;
+				}
+				if(ghosts[1] == undefined){
+					return;
+				}
+				if(ghosts[2] == undefined){
+					return;
+				}
+				if(ghosts[3] == undefined){
+					return;
+				}
+				
+				ghosts.forEach(ghost => {
+					if (ghost.goingHome  &&  ghost.position.clone().sub(new THREE.Vector3(0.0, ghost.position.y, 0.0)).distanceToSquared(ghostHome) < 0.01){
+						deActivateSuperMode(ghost);
+					}
+
+					if(ghost.scaredTime > 0 && ghost.isScared){
+						ghost.scaredTime -= deltaTime; 
+						//console.log(deltaTime);
+					}
+					if (ghost.scaredTime < 0 && ghost.isScared && !ghost.goingHome){
+						deActivateSuperMode(ghost);
+					}
+					else if(ghost.scaredTime<10 && ghost.isScared &&!ghost.goingHome ){
+						let temp = 0.02+ 0.02*Math.sin(ghosts[0].scaredTime*7);
+						ghost.getObjectByName("ghostBot").material.emissive = {r: temp, g: temp, b: 0.3 + temp};
+						ghost.getObjectByName("ghostTopScared").material.emissive = {r: temp, g: temp, b: 0.3 + temp};
+						console.log("halló????")
+					}
+					
+					let possibleDir = []; 
+					//ghost.direction = 1; // 0-3
+					
+					playerGhostCollision(ghost);
+					if (ghost.is_turning) return;
+					let spatial_change = basicDir[ghost.direction].clone().multiplyScalar(deltaTime*getGhostSpeed(ghost));
+					ghost.position.add(spatial_change);
+					ghost.collider.translate(spatial_change);
+					if (ghost.position.x > 2*(mapWidth)+1){
+						ghost.position.x -= 2*(mapWidth+1);
+						console.log(ghost.position);
+						ghost.collider.translate(new THREE.Vector3(-2*(mapWidth+1), 0 ,0));
+						console.log(ghost.collider.end);
+					} 
+					else if (ghost.position.x < -1){
+						ghost.position.x += 2*(mapWidth+1);
+						console.log(ghost.position);
+						ghost.collider.translate(new THREE.Vector3(2*(mapWidth+1), 0 ,0));
+						console.log(ghost.collider.end);
+					}
+
+					const forward_vector = basicDir[ghost.direction].clone();
+					const dot_product = forward_vector.dot(ghost.position);
+					let intersection = false;
+					if ( Math.abs(Math.round(dot_product/2)*2 - dot_product) < 0.1 ){
+						// If we are in the vicinity of a possible intersection
+						if (ghost.can_turn == false) return;
+						for(let i = 0; i < basicDir.length; i++){
+							raycaster.set(ghost.position.clone(), basicDir[i].clone());
+							let cast = (ghost.goingHome ? worldOctreeForGhosts : worldOctree).rayIntersect(raycaster.ray);
+							if (!cast  ||  cast.distance > 1.5){
+								possibleDir.push(i);
+								if (Math.abs(i - ghost.direction) % 2 == 1) intersection = true;
+							}
+						}
+						
+						
+						if (intersection){
+							ghost.is_turning = true;  // Needs to be set to false in turning function.
+							ghost.can_turn = false;
+
+							// Remove back if other ways possible, but not if ghost is scared
+							// if(!ghost.isScared || ghost.goingHome){
+								if (possibleDir.length > 1){
+									possibleDir = possibleDir.filter(function(item){
+										return item !== (ghost.direction + 2) % 4;
+									})
+								}
+							// }
+							
+
+							let new_direction = possibleDir[Math.floor(Math.random()*possibleDir.length)];
+							
+							// Dead ghosts go home, scared ghosts flee from Pac-Man & normal ghosts make educated decisions some of the time.
+							if (ghost.goingHome) new_direction = educatedMovement(ghost, possibleDir, ghostHome, new_direction);
+							else if (ghost.isScared) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position.clone().add(ghost.position.clone().sub(pacmanMesh.position).multiplyScalar(2)), new_direction);
+							else if (pacmanMesh && Math.random() < 0.2) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position, new_direction);
+
+							
+							if (new_direction == ghost.direction) return;
+							else if (Math.abs(new_direction - ghost.direction) == 2){
+								// 180° turn
+								ghost.cameraRotation = Math.PI;
+								ghost.cameraRotating = Math.max(Math.round((ghost.goingHome ? 0.1 : 2)*cameraRotationSpeed), min_no_of_rotation_frames);
+							} else if (new_direction - ghost.direction == -1  ||  new_direction - ghost.direction == 3){
+								// right turn
+								ghost.cameraRotation = Math.PI/2;
+								ghost.cameraRotating = Math.max(Math.round((ghost.goingHome ? 0.05 : 1)*cameraRotationSpeed), min_no_of_rotation_frames);
+							} else {
+								// left turn
+								ghost.cameraRotation = -Math.PI/2;
+								ghost.cameraRotating = Math.max(Math.round((ghost.goingHome ? 0.05 : 1)*cameraRotationSpeed), min_no_of_rotation_frames);
+							}
+							ghost.direction = new_direction;
+						} else if (possibleDir.length == 1){
+							// If we are in a dead-end
+							ghost.is_turning = true;  // Needs to be set to false in turning function.
+							ghost.can_turn = false;
+							ghost.cameraRotation = Math.PI;
+							ghost.cameraRotating = Math.max(Math.round((ghost.goingHome ? 0.1 : 2)*cameraRotationSpeed), min_no_of_rotation_frames);
+							ghost.direction = (ghost.direction + 2) % 4;
+						}
+					}
+					else {
+						ghost.can_turn = true;  // Becomes true a few moments after turning such that we don't turn on same intersection again.
+					}
+					
+
+				});
+			}
+
+			
+
+			var cameraToUse = 0;
+			const pacman_frames = 0.6;
+			const raycaster = new THREE.Raycaster();
+			function controls( deltaTime ) {
+				if (!pacmanMesh) return;
+
+				let temp = getSideVector().clone();
+				let temp2 = new THREE.Vector3(Math.round(temp.x*temp.x), Math.round(temp.y*temp.y), Math.round(temp.z*temp.z));
+
+				// gives a bit of air control
+				const speedDelta = deltaTime * ( playerOnFloor ? 40 : 8 );
+
+				// playerVelocity.add( getForwardVector().multiplyScalar( speedDelta*0.5 ) );
+				// console.log(player_direction_index);
+				// console.log(basicDir[playerDirection]);
+				playerVelocity.add( basicDir[player_direction_index].clone().multiplyScalar( speedDelta*0.5 ) );
+
+				function pacman_go(i){
+					if (!keyStates[basicDirKeys[i]]) return;
+					if (i == player_direction_index) return;
+					raycaster.set(cameras[0].position.clone(), basicDir[i]);
+					const cast = worldOctree.rayIntersect(raycaster.ray);
+					
+					if ( !cast || cast.distance > 1.5 ){ 
+						pacmanMesh.cameraRotation = Math.abs(i - player_direction_index) == 2 ? Math.PI : ((i - player_direction_index == -1 || i - player_direction_index == 3) ? 1 : -1 )*Math.PI/2;
+						pacmanMesh.cameraRotating = Math.max(Math.round((Math.abs(i - player_direction_index) == 2 ? 2 : 1 )*cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
+						// console.log("PACMAN-MESH.cameraRotating: " + pacmanMesh.cameraRotating);
+						player_direction_index = i;
+						keyStates[basicDirKeys[i]] = false;
+					}
+				}
+
+				if (cameraToUse == 2){
+					for (var i = 0; i < 4; i++){
+						if (pacmanMesh.cameraRotating == 0)	pacman_go(i); // basicDir[i], basicDirKeys[i]);
+					}
+				}
+				else{
+					if ( keyStates[ 'KeyS' ] && pacmanMesh.cameraRotating == 0 ) {
+						raycaster.set(cameras[0].position.clone(), getForwardVector().clone().negate());
+						const cast = worldOctree.rayIntersect(raycaster.ray);
+						
+						if ( !cast  ||  cast.distance > 1.5 ){ 
+							pacmanMesh.cameraRotation = Math.PI;
+							pacmanMesh.cameraRotating = Math.max(Math.round(cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
+							player_direction_index = (player_direction_index + 2) % 4;
+							keyStates[ 'KeyS' ] = false;
+						}
+					}
+					
+					
+					if ( keyStates[ 'KeyA' ] && pacmanMesh.cameraRotating == 0) {
+						raycaster.set(cameras[0].position.clone(), temp.clone().negate());
+						const cast = worldOctree.rayIntersect(raycaster.ray);
+						
+						if ( !cast  ||  cast.distance > 1.5 ){ 
+							pacmanMesh.cameraRotation = 0.5* Math.PI;
+							pacmanMesh.cameraRotating = Math.max(Math.round(cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
+							player_direction_index = (player_direction_index + 3) % 4;
+							keyStates[ 'KeyA' ] = false;
+						}
+					} 
+	
+					
+					if ( keyStates[ 'KeyD' ] && pacmanMesh.cameraRotating == 0) {
+						raycaster.set(cameras[0].position.clone(), temp.clone());
+						const cast = worldOctree.rayIntersect(raycaster.ray);
+						
+						if ( !cast  ||  cast.distance > 1.5){
+							pacmanMesh.cameraRotation = -0.5* Math.PI;
+							pacmanMesh.cameraRotating = Math.max(Math.round(cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
+							player_direction_index = (player_direction_index + 1) % 4;
+							keyStates[ 'KeyD' ] = false;
+						}
+					}
+				}
+				
+
+				
+				if ( keyStates[ 'KeyE' ] ) {
+					keyStates["keyE"] = false;
+					
+					if (keyDown){
+						console.log(scene);
+						console.log("'E' was pressed...");
+						
+						cameraToUse = (cameraToUse + 1) % cameras.length;
+						console.log("new cam to use: " + cameraToUse);
+						let nomnom = scene.getObjectByName("NomNom");
+						if(cameraToUse == 0 && nomnom){
+							nomnom.position.sub(new THREE.Vector3(0,0.7,0));
+						}
+						pacmanMesh.visible = cameraToUse != 0;
+						scene.fog = new THREE.Fog( 0x000000, 0, 40 );
+						if (cameraToUse == 1) {
+							offset_second_camera(cameras[1], cameras[0]);
+							cameras[1].rotation.y = cameras[0].rotation.y;
+							cameras[1].rotation.x = -Math.PI/5;
+						}
+						if (cameraToUse == 2 && nomnom) {
+							cameras[1].position.copy(new THREE.Vector3(20,35,0));
+							cameras[1].rotation.set(-1.1,0,0);
+							scene.fog = new THREE.Fog( 0x000000, 0, 80 );
+							nomnom.position.add(new THREE.Vector3(0,0.7,0));
+							
+						}
+						keyDown = false;
+					}
+				}
+
+				if ( playerOnFloor ) {
+					if ( keyStates[ 'Space' ] ) {
+						song.play();
+						playerVelocity.y = 15;
+					}
+				}
+			}
+			
+			
+			// Instantiate a loader
+			//const mapLoader = new GLTFLoader();
+
+			//const loader3 = new GLTFLoader();
+			
+			// Load a glTF resource
+			var pacmanMesh = undefined; 
+			loader.load(
+				// resource URL
+				'animatedPacmanNew.gltf',
+				// called when the resource is loaded
+				function ( gltf ) {
+					/* gltf.scene.position.x = 8; 
+					gltf.scene.position.z = -8; 
+					gltf.scene.position.y = 1; */
+					gltf.scene.rotation.y = 0.5 * Math.PI; 
+					gltf.scene.scale.set(0.7, 0.7, 0.7); 
+					
+					pacmanMesh = gltf.scene; 
+					pacmanMesh.visible = false;
+					pacmanMesh.cameraRotating = 0;
+					pacmanMesh.cameraRotation = 0;
+					var anim = gltf.animations; 
+					console.log("það eru " + anim.length + " animations!")
+					mixer = new THREE.AnimationMixer( gltf.scene );
+					
+					//spilar öll animationin, blönduð saman. 
+       	 			gltf.animations.forEach( ( clip ) => {
+						console.log("starting animation")
+						mixer.clipAction( clip).setEffectiveTimeScale(4.0);
+            			mixer.clipAction( clip ).play();
+          
+        			} );
+					gltf.scene.traverse( child => {
+						if ( child.isMesh ) {
+							child.castShadow = true;
+							child.receiveShadow = true;
+							if ( child.material.map ) {
+								//child.material.map.anisotropy = 4;
+							}
+						}
+					} );
+					
+					//gltf.scene.add(listener);
+					//bætir við hlutnum í senuna
+
+					listener.name = "listener";
+	
+
+					gltf.scene.add(listener);	
+					scene.add( gltf.scene );
+					//worldOctree.fromGraphNode( gltf.scene );
+
+				},
+				// called while loading is progressing
+				function ( xhr ) {
+					console.log( "Animated_Pacman: " + ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+				},
+				// called when loading has errors
+				function ( error ) {
+					console.log( 'An error happened' );
+				}
+			);
+
+
+			// function rotateObj(pacman_or_ghost, bool_is_pacman, deltaTime){
+			// 	// Rotates objects in the scene, both the corner-turning 
+			// 	// animation (using designated number of frames) and the
+			// 	// "ghost-curtain" rotating animation (using delta time).
+			// 	if (pacman_or_ghost == undefined) return;
+			// 	// var corner_rotating_deltaTime = deltaTime;
+			// 	// if (pacman_or_ghost.cameraRotating < deltaTime) corner_rotating_deltaTime = pacman_or_ghost.cameraRotating;
+			// 	let corner_rotating_deltaTime = Math.min(deltaTime, pacman_or_ghost.cameraRotating);
+			// 	if (pacman_or_ghost.cameraRotating != 0){
+			// 		if (bool_is_pacman){
+			// 			cameras[0].rotation.y += pacman_or_ghost.cameraRotation*corner_rotating_deltaTime/pacman_or_ghost.cameraRotating;
+			// 			if (cameraToUse == 1) cameras[1].rotation.y += pacman_or_ghost.cameraRotation*corner_rotating_deltaTime/pacman_or_ghost.cameraRotating;
+			// 		}
+			// 		else {
+			// 			pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*20*getGhostSpeed(pacman_or_ghost) - pacman_or_ghost.cameraRotation*corner_rotating_deltaTime/pacman_or_ghost.cameraRotating;
+			// 		}
+			// 		pacman_or_ghost.rotation.y += pacman_or_ghost.cameraRotation*corner_rotating_deltaTime/pacman_or_ghost.cameraRotating;
+					
+			// 		pacman_or_ghost.cameraRotation -= pacman_or_ghost.cameraRotation*corner_rotating_deltaTime/pacman_or_ghost.cameraRotating;
+			// 		// pacman_or_ghost.cameraRotating -= deltaTime;
+			// 		pacman_or_ghost.cameraRotating = Math.max(pacman_or_ghost.cameraRotating - corner_rotating_deltaTime, 0);
+			// 	}
+			// 	else if (!bool_is_pacman){
+			// 		pacman_or_ghost.is_turning = false;
+			// 		pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*20*getGhostSpeed(pacman_or_ghost);
+			// 	}
+			// }
+
+			function rotateObj(pacman_or_ghost, bool_is_pacman, deltaTime){
+				// Rotates objects in the scene, both the corner-turning 
+				// animation (using designated number of frames) and the
+				// "ghost-curtain" rotating animation (using delta time).
+				if (pacman_or_ghost == undefined) return;
+				if (pacman_or_ghost.cameraRotating != 0){
+					if (bool_is_pacman){
+						cameras[0].rotation.y += pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+						if (cameraToUse == 1) cameras[1].rotation.y += pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					}
+					else {
+						pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*4*getGhostSpeed(pacman_or_ghost) - pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					}
+					pacman_or_ghost.rotation.y += pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					
+					pacman_or_ghost.cameraRotation -= pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					// pacman_or_ghost.cameraRotating -= deltaTime;
+					// pacman_or_ghost.cameraRotating = Math.max(pacman_or_ghost.cameraRotating - corner_rotating_deltaTime, 0);
+					pacman_or_ghost.cameraRotating--;
+					// console.log("CameraRotating: " + pacman_or_ghost.cameraRotating);
+				}
+				else if (!bool_is_pacman){
+					pacman_or_ghost.is_turning = false;
+					pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*4*getGhostSpeed(pacman_or_ghost);
+				}
+			}
+
+
+			function getGhostSpeed(ghost){
+				return (ghost.isScared ? (ghost.goingHome ? 3.0 : 0.7) : 1.2);
+			}
+
+			// Instantiate a loader
+			//const loader4 = new GLTFLoader();
+			
+			const scared_color = {r: 0.0, g: 100/255, b: 1.0};  // {r: 0.0, g: 0.0, b: 1.0}
+			const scared_emissive = {r: 0.0, g: 0.0, b: 0.5};
+			var ghost_names_and_deviations = [];
+			const ghost_first_placing_pos = new THREE.Vector3(16.0, 1.4, -22.0);
+			// Load a glTF resource
+			loader.load(
+				// resource URL
+				'scaredGhost1.gltf',
+				// called when the resource is loaded
+				function ( gltf ) {
+					// gltf.scene.position.x = 16; 
+					// gltf.scene.position.z = -22; 
+					// gltf.scene.position.y = 1.4;
+					gltf.scene.position.copy(ghost_first_placing_pos);
+					gltf.scene.scale.set(0.6, 0.6, 0.6);
+					
+					gltf.scene.ScaredMaterial = gltf.scene.getObjectByName("ghostBot").material.clone();
+					gltf.scene.ScaredMaterial.color = scared_color;
+					gltf.scene.ScaredMaterial.emissive = scared_emissive;
+					gltf.scene.NormalMaterial = gltf.scene.ScaredMaterial.clone();
+					
+					console.log(gltf.scene);
+
+					function newGhost(name, color, emissive, posxadditive){
+						// NOTE: posxadditive changes the prefab between each successive call
+						gltf.scene.name = name;
+						gltf.scene.NormalMaterial = gltf.scene.NormalMaterial.clone(); 
+						gltf.scene.NormalMaterial.color = color;
+						gltf.scene.NormalMaterial.emissive = emissive;
+
+						var curr_ghost_child = gltf.scene.getObjectByName("ghostBot");
+						curr_ghost_child.material = gltf.scene.NormalMaterial;
+
+						curr_ghost_child = gltf.scene.getObjectByName("ghostTopNormal");
+						curr_ghost_child.material = gltf.scene.NormalMaterial;
+						gltf.scene.getObjectByName("ghostTopScared").material = gltf.scene.ScaredMaterial;
+						
+						gltf.scene.position.x += posxadditive;
+						ghosts.push(gltf.scene.clone());
+						ghosts[ghosts.length-1].ScaredMaterial = gltf.scene.ScaredMaterial;
+						ghosts[ghosts.length-1].NormalMaterial = gltf.scene.NormalMaterial.clone(); 
+					}
+
+					newGhost("Blinky", {r: 1.0, g: 0.0, b: 0.0}, {r: 0.30, g: 0.0, b: 0.0}, 0);
+					newGhost("Pinky", {r: 1.0, g: 0.0, b: 1.0}, {r: 0.20, g: 0.0, b: 0.20}, 2);
+					newGhost("Inky", {r: 0.0, g: 255/255, b: 1.0}, {r: 0.0, g: 0.18, b: 0.25}, 4);
+					newGhost("Clyde", {r: 1.0, g: 50/255, b: 0.0}, {r: 0.25, g: 0.1, b: 0.0}, 2);
+
+					ghost_names_and_deviations.push({name: "Blinky", dev: 0});
+					ghost_names_and_deviations.push({name: "Pinky", dev: 2});
+					ghost_names_and_deviations.push({name: "Inky", dev: 6});
+					ghost_names_and_deviations.push({name: "Clyde", dev: 8});
+
+					//bætir við hlutnum í senuna
+					//scene.add( gltf.scene );
+					for(let i = 0; i<ghosts.length; i++){
+						ghosts[i].traverse( child => {
+							if ( child.isMesh ) {
+								child.castShadow = true;
+								child.receiveShadow = true;
+								// if ( child.material.map ) {
+								// 	child.material.map.anisotropy = 4;
+								// }
+							}
+							if(child.name == "ghostTopScared" || child.name == "ghosteyeBallsScared"){
+								child.visible = false;
+							}
+
+							/* if (child.isGroup){
+								
+							} */
+
+						} );
+						ghosts[i].visible = true; 
+						ghosts[i].collider = new Capsule( new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y-1.3,ghosts[i].position.z ), new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y,ghosts[i].position.z) , 0.4 );
+						ghosts[i].direction = 3;
+						ghosts[i].cameraRotation = 0;
+						ghosts[i].cameraRotating = 0;	
+						ghosts[i].goingHome = false; 
+						ghosts[i].isScared = false; 
+						ghosts[i].scaredTime = 0; 
+						// ghosts[i].followingPlayer = false; 
+
+						const audioLoader = new THREE.AudioLoader();
+						const sound = new THREE.PositionalAudio( listener );
+						audioLoader.load( 'pacmanSounds/ghost1.ogg', function( buffer ) {
+							sound.setBuffer( buffer );
+							sound.setRefDistance( 5 );
+							//sound.setDirectionalCone( 180, 230, 0.1 );
+							sound.setLoop( true );
+							sound.play();
+							ghosts[i].getObjectByName("ghostTopNormal").sound = sound;
+
+						});
+						
+						//sound.play();
+
+						scene.add(ghosts[i]);
+					}
+
+					
+				},
+
+				// called while loading is progressing
+				function ( xhr ) {
+					console.log("Ghosts: " + ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+				},
+
+				// called when loading has errors
+				function ( error ) {
+					console.log( 'An error happened' );
+				}
+			);
+
+			
+			function teleportPlayerIfOob() {
+
+				if ( cameras[0].position.y <= - 25 ) {
+
+					playerCollider.center.set( 20, 0.35, -10);
+					cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)));
+					cameras[0].rotation.set( 0, 0, 0 );
+					
+					// second_camera.position.copy( camera.position );
+					offset_second_camera(cameras[1], cameras[0]);
+					cameras[1].rotation.set(-Math.PI/5,0,0);
+
+				}
+
+			}
+			
+
+			// Load a glTF resource
+			loader.load(
+				// resource URL
+				'pacmanMap.gltf',
+				// called when the resource is loaded
+				function ( gltf ) {
+					gltf.scene.position.x = 0; 
+					gltf.scene.position.z = 0; 
+					gltf.scene.position.y = 0;
+					//bætir við hlutnum í senuna
+					gltf.scene.name = "Level";
+
+					worldOctree.fromGraphNode( gltf.scene );
+					gltf.scene.getObjectByName("blockEntrance").removeFromParent();
+					worldOctreeForGhosts.fromGraphNode(gltf.scene);
+					
+					scene.add( gltf.scene );
+					// pacmap = gltf.scene;
+					// scenemap.add( gltf.scene );
+
+					gltf.scene.traverse( child => {
+						if ( child.isMesh ) {
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+
+					
+
+							if (child.name == "NormalBlocking" || child.name == "superFood"){
+								child.castShadow = false;
+								child.receiveShadow = false;
+								child.visible = false;
+							}
+
+							if ( child.material.map ) {
+								child.material.map.anisotropy = 4;
+							}
+						}
+					} );
+
+				
+
+					const helper = new OctreeHelper( worldOctree );
+					helper.visible = false;
+					scene.add( helper );
+
+					const gui = new GUI( { width: 200 } );
+					gui.add( { debug: false }, 'debug' )
+						.onChange( function ( value ) {
+							helper.visible = value;
+					} );
+					gui.add( params, 'exposure', 0.1, 2 ).onChange( function ( value ) {
+
+						renderer.toneMappingExposure = Math.pow( value, 4.0 );
+
+					} );
+
+			
+
+					fillMap();
+					animate(); 
+					
+				},
+				// called while loading is progressing
+				function ( xhr ) {
+					console.log( ("map " + xhr.loaded / xhr.total * 100 ) + '% loaded' );
+				},
+				// called when loading has errors
+				function ( error ) {
+					console.log( 'An error happened' );
+				}
+			);
+			// Instantiate a loader
+			
+
+			var fps = 30;
+
+			function animate() {
+				const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
+				// const deltaTime = clock.getDelta() / STEPS_PER_FRAME;
+				// console.log(stats.frames*1000/(stats.time - stats.prevTime)); // ( frames * 1000 ) / ( time - prevTime )
+				// console.log(Math.round(stats.getfps()));
+				fps = 0.95*fps + 0.05*stats.getfps();
+				cameraRotationSpeed = fps*0.4;
+				// console.log(Math.round(fps));
+
+				// we look for collisions in substeps to mitigate the risk of
+				// an object traversing another too quickly for detection.
+				for ( let i = 0; i < STEPS_PER_FRAME; i ++ ) {
+					controls( deltaTime );
+					updatePlayer( deltaTime );
+					
+					updateSpheres( deltaTime );
+					moveGhosts( deltaTime*3 );
+					teleportPlayerIfOob();
+					scoreHover( deltaTime );
+					if (PlayerDied) break;
+				}
+				
+				
+				if ( mixer != undefined ) {
+					// Plays the Pac-man animation
+					if(!stuck){
+						mixer.update( deltaTime*2 );
+					}
+				}
+				
+				
+				rotateObj(pacmanMesh, true, deltaTime*STEPS_PER_FRAME);
+				ghosts.forEach(ghost => {
+					rotateObj(ghost, false, deltaTime*STEPS_PER_FRAME);
+				});
+
+				
+				let temp_cam_to_use = Math.min(cameraToUse, 1);
+				
+				renderer.clear(); 
+
+			
+				if (cameraToUse != 2){
+					scene.position.set((mapWidth+1)*2, 0, 0);
+				
+
+					scene.getObjectByName("MainLight").position.x -= (mapWidth+1)*2;
+					renderer.render( scene, cameras[temp_cam_to_use]);
+
+					scene.position.set(-(mapWidth+1)*2, 0, 0);
+					scene.getObjectByName("MainLight").position.x += (mapWidth+1)*4;
+					renderer.render( scene, cameras[temp_cam_to_use]);
+					
+					scene.position.set(0, 0, 0);
+					scene.getObjectByName("MainLight").position.x -= (mapWidth+1)*2;
+				
+
+				}
+				
+				renderer.render( scene, cameras[temp_cam_to_use]);
+				
+				// composer.render(deltaTime*100000);
+				//composers[cameraToUse].render();
+				
+
+				stats.update();
+				text2.innerHTML = "SCORE: " + score;
+				if (PlayerDied) playerDeath();
+				requestAnimationFrame( animate );
+			
+			}
+
+		</script>
+	</body>
+</html>

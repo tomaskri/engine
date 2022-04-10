@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js - misc - octree collisions</title>
+		<meta charset=utf-8 />
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+	<body>
+		<div id="info">
+			WASD to move and E to change POV<br />
+			<!-- WASD TO MOVE<br/>
+			WASD to move and SPACE to jump -->
+		</div>
+		<div id="container"></div>
+
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+
+			import Stats from './jsm/libs/stats.module.js';
+
+			import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+
+			import { Octree } from './jsm/math/Octree.js';
+			import { OctreeHelper } from './jsm/helpers/OctreeHelper.js';
+
+			import { Capsule } from './jsm/math/Capsule.js';
+
+			import { GUI } from './jsm/libs/lil-gui.module.min.js';
+
+			//import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
+
+			//import { RenderPass } from './jsm/postprocessing/RenderPass.js';
+
+			//import { ShaderPass } from './jsm/postprocessing/ShaderPass.js';
+			
+			//import { UnrealBloomPass } from './jsm/postprocessing/UnrealBloomPass.js';
+
+
+			const second_camera_offset = [-6, 3];  // How far back (negative) & how much higher.
+			const clock = new THREE.Clock();
+			
+			const scene = new THREE.Scene();
+			// const scenemap = new THREE.Scene();
+			scene.background = new THREE.Color( 0x000000 );
+			scene.fog = new THREE.Fog( 0x000000, 0, 40 );
+			
+			const camera = new THREE.PerspectiveCamera( 100, window.innerWidth / window.innerHeight, 0.1, 50 );
+			const second_camera = new THREE.PerspectiveCamera( 70, window.innerWidth/window.innerHeight, 0.1, 40);
+			const board_camera = new THREE.PerspectiveCamera( 180, window.innerWidth/window.innerHeight, 0.1, 50);  
+			camera.rotation.order = 'YXZ';
+			second_camera.rotation.order = "YXZ";
+			second_camera.rotation.set(-Math.PI/5,0,0);
+			board_camera.rotation.order = "YXZ";
+			board_camera.rotation.set(-Math.PI/5,0,0);
+		
+			board_camera.position.copy(new THREE.Vector3(10, 20, -24.0));
+			var cameras = [];
+			// scene.add(board_camera);
+			cameras.push(camera);
+			cameras.push(second_camera);
+			cameras.push(board_camera);
+			
+			// second_camera.rotation.order = "YXZ";
+			
+			const fillLight1 = new THREE.HemisphereLight( 0xb0b0b0, 0x7a7a7a, 0.5 );
+			fillLight1.position.set( 2, 1, 1 );
+			scene.add( fillLight1 );
+			
+			
+		 	const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.8 );
+			directionalLight.position.set( 8, 25, -8 );
+			directionalLight.castShadow = true;
+			directionalLight.shadow.camera.near = 0.01;
+			directionalLight.shadow.camera.far = 500;
+			directionalLight.shadow.camera.right = 70;
+			directionalLight.shadow.camera.left = - 70;
+			directionalLight.shadow.camera.top	= 70;
+			directionalLight.shadow.camera.bottom = - 70;
+			directionalLight.shadow.mapSize.width = 2048;
+			directionalLight.shadow.mapSize.height = 2048;
+			directionalLight.shadow.radius = 2;
+			directionalLight.shadow.bias = - 0.00006;
+			directionalLight.name = "MainLight";
+			scene.add( directionalLight ); 
+
+			
+			/* const spotLight = new THREE.SpotLight( 0xffffff );
+			spotLight.position.set( 6, 5, -6 );
+			
+
+			spotLight.castShadow = true;
+
+			spotLight.shadow.mapSize.width = 1024;
+			spotLight.shadow.mapSize.height = 1024;
+
+			spotLight.shadow.camera.near = 500;
+			spotLight.shadow.camera.far = 4000;
+			spotLight.shadow.camera.fov = 30;
+
+			scene.add( spotLight ); */
+
+			const container = document.getElementById( 'container' );
+
+			const renderer = new THREE.WebGLRenderer( { antialias: false, stencil: false} );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.shadowMap.enabled = true;
+			renderer.shadowMap.type = THREE.VSMShadowMap;
+			renderer.outputEncoding = THREE.sRGBEncoding;
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			renderer.autoClear = true; 
+			renderer.autoClearColor  = false; 
+			renderer.autoClearDepth = false;
+		
+			/* renderer.setScissor(300,300,300,300);
+			renderer.setScissorTest(true);  */
+			// renderer.autoClearStencil = false;
+			container.appendChild( renderer.domElement );
+			
+			const stats = new Stats();
+			stats.domElement.style.position = 'absolute';
+			stats.domElement.style.top = '0px';
+			container.appendChild( stats.domElement );
+
+			const GRAVITY = 30;
+			var cameraRotation = 0;
+			var cameraRotating = 0;
+			var cameraRotationSpeed = 20.0; 
+			var NUM_SPHERES = 0;
+			const SPHERE_RADIUS = 0.2;
+			var mixer = undefined; 
+			var song = new Audio('pacmanSounds/pacmanSong.mp3');
+			var mixer2 = undefined; 
+			var basicDir = [];
+			basicDir.push(new THREE.Vector3(1.0,0.0,0.0));
+			basicDir.push(new THREE.Vector3(0.0,0.0,1.0));
+			basicDir.push(new THREE.Vector3(-1.0,0.0,0.0));
+			basicDir.push(new THREE.Vector3(0.0,0.0,-1.0));
+			var keyDown; 
+			var ghosts = [];
+			var waka = true; 
+			const mapHeight = 21; 
+			const mapWidth = 20;
+			var stuck = false; 
+			const ghostHome = new THREE.Vector3(20.0,0.0,-22.0); // NOTE: was -24.0
+		
+		
+
+			const STEPS_PER_FRAME = 5;
+			
+			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );
+			const superSphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS*2.5, 5 );
+			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xbbbb44 } );
+			
+			const spheres = [];
+			let sphereIdx = 0;
+			const loader = new GLTFLoader();
+			
+			/* for ( let i = 0; i < NUM_SPHERES; i ++ ) {
+
+				const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+				sphere.castShadow = true;
+				sphere.receiveShadow = true;
+				
+				scene.add( sphere );
+				
+				spheres.push( {
+					mesh: sphere,
+					collider: new THREE.Sphere( new THREE.Vector3( 0, - 100, 0 ), SPHERE_RADIUS ),
+					velocity: new THREE.Vector3()
+				} );
+
+			} */
+			
+			const worldOctree = new Octree();
+			const worldOctreeForGhosts = new Octree();
+			
+			//const playerCollider = new Capsule( new THREE.Vector3( 2, 0.35, -2 ), new THREE.Vector3( 2, 1, -2 ), 0.35 );
+			const playerCollider = new THREE.Sphere( new THREE.Vector3( 20, 0.35, -10), 0.7 );
+			
+			cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
+			const GhostCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
+
+
+			const playerVelocity = new THREE.Vector3();
+			const playerDirection = new THREE.Vector3();
+			
+			let playerOnFloor = false;
+			let mouseTime = 0;
+			
+			
+			const keyStates = {};
+			
+			
+			const vector1 = new THREE.Vector3();
+			const vector2 = new THREE.Vector3();
+			const vector3 = new THREE.Vector3();
+			
+			document.addEventListener( 'keydown', ( event ) => {
+
+				keyStates[ event.code ] = true;
+				keyDown = true; 
+				
+			} );
+
+			document.addEventListener( 'keyup', ( event ) => {
+
+				keyStates[ event.code ] = false;
+				keyDown = false; 
+			} );
+			
+			container.addEventListener( 'mousedown', () => {
+				
+				document.body.requestPointerLock();
+
+				mouseTime = performance.now();
+
+			} );
+
+			document.addEventListener( 'mouseup', () => {
+				
+				/* if ( document.pointerLockElement !== null ) throwBall(); */
+				
+			} );
+
+			document.body.addEventListener( 'mousemove', ( event ) => {
+				
+				if ( document.pointerLockElement === document.body ) {
+					
+					/* cameras[0].rotation.y -= event.movementX / 500;
+					cameras[0].rotation.x -= event.movementY / 500;
+					cameras[1].rotation.y -= event.movementX / 500;
+					cameras[1].rotation.x -= event.movementY / 500;
+					cameras[2].rotation.y -= event.movementX / 500;
+					cameras[2].rotation.x -= event.movementY / 500; */
+
+				}
+
+			} );
+			
+			window.addEventListener( 'resize', onWindowResize );
+
+			function onWindowResize() {
+				
+				cameras[0].aspect = window.innerWidth / window.innerHeight;
+				cameras[0].updateProjectionMatrix();
+				cameras[1].aspect = window.innerWidth / window.innerHeight;
+				cameras[1].updateProjectionMatrix();
+				cameras[2].aspect = window.innerWidth / window.innerHeight;
+				cameras[2].updateProjectionMatrix();
+				
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				
+			}
+			
+			/* function throwBall() {
+				
+				const sphere = spheres[ sphereIdx ];
+				
+				cameras[0].getWorldDirection( playerDirection );
+				
+				sphere.collider.center.copy( playerCollider.end ).addScaledVector( playerDirection, playerCollider.radius * 1.5 );
+				
+				// throw the ball with more force if we hold the button longer, and if we move forward
+				
+				const impulse = 15 + 30 * ( 1 - Math.exp( ( mouseTime - performance.now() ) * 0.001 ) );
+				
+				sphere.velocity.copy( playerDirection ).multiplyScalar( impulse );
+				sphere.velocity.addScaledVector( playerVelocity, 2 );
+				
+				sphereIdx = ( sphereIdx + 1 ) % spheres.length;
+				
+			} */
+			
+			function playerCollisions() {
+
+				const result = worldOctree.sphereIntersect( playerCollider );
+				
+				playerOnFloor = false;
+				stuck = false;
+				if ( result ) {
+					
+					playerOnFloor = result.normal.y > 0;
+
+					if ( ! playerOnFloor ) {
+
+						playerVelocity.addScaledVector( result.normal, - result.normal.dot( playerVelocity ) );
+						
+					}
+					
+					if (result.normal.x != 0 ||  result.normal.z != 0){
+						stuck = true; 
+						
+					}
+					playerCollider.translate( result.normal.multiplyScalar( result.depth ) );
+					
+				}
+				//console.log(stuck);
+			}
+			
+			let NomGroup = new THREE.Group();
+			NomGroup.name = "NomNom";
+			function fillMap(){
+				let raycaster = new THREE.Raycaster();
+				let upvec = new THREE.Vector3(0,1,0);
+				for(let i = 1; i<mapWidth; i++){
+					for(let j = 1; j<mapHeight; j++){
+						//create sphere; 
+						//const sphere = undefined; 
+
+						const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+						// if(Math.random() < 0.05){
+						// 	sphere.geometry = superSphereGeometry; 
+						// 	sphere.material = sphere.material.clone();
+						// 	sphere.material.color = {r: 1, g: 1, b: 1}
+						// 	sphere.super = true; 
+						// 	console.log(sphere);
+						// }else{
+							
+						// }
+						
+						sphere.castShadow = true;
+						sphere.receiveShadow = true;
+						sphere.position.set(2*i, 0.6, -2*j);
+						sphere.name = "Sphere_" + NUM_SPHERES; 
+						
+						
+						raycaster.set(sphere.position.clone().sub(new THREE.Vector3(0, sphere.position.y, 0)).add(upvec.clone().multiplyScalar(5)), upvec.clone().negate());
+						
+						let dist = worldOctree.rayIntersect(raycaster.ray).distance;
+						// Plane at height 4 represents Superfruit
+						// Plane at height 2.1 represents Boxes, no fruit
+						// Ground at height 0 represents ordinary fruit
+						console.log(dist);
+						sphere.super = false;
+						if (dist < 1.5){
+							sphere.geometry = superSphereGeometry; 
+							sphere.material = sphere.material.clone();
+							sphere.material.color = {r: 1, g: 1, b: 1}
+							sphere.super = true; 
+							NomGroup.add( sphere );
+							NUM_SPHERES++;
+							
+						} else if (dist > 3){
+							NomGroup.add( sphere );
+							NUM_SPHERES++;
+						}
+						spheres.push( {
+							mesh: sphere,
+							collider: new THREE.Sphere( new THREE.Vector3( 2*i, 0.6, -2*j ), SPHERE_RADIUS ),
+							name: sphere.name,
+						});
+					}
+				}
+				scene.add(NomGroup);
+				console.log("the number of spheres is: " + NUM_SPHERES);
+			}
+			
+			function updatePlayer( deltaTime ) {
+
+				let damping = Math.exp( - 4 * deltaTime ) - 1;
+
+				if ( ! playerOnFloor ) {
+					
+					playerVelocity.y -= GRAVITY * deltaTime;
+
+					// small air resistance
+					damping *= 0.1;
+					
+				}
+				
+				playerVelocity.addScaledVector( playerVelocity, damping );
+				if (cameraRotating != 0){
+					playerVelocity.sub(playerVelocity);
+				}
+				else{  // Set speed to constant value (normalize and scale)
+					// playerDirection;
+					let temp = getSideVector();
+					let temp2 = new THREE.Vector3(Math.round(temp.x*temp.x), Math.round(temp.y*temp.y), Math.round(temp.z*temp.z));
+					// console.log(temp2);
+					let temp_campos = cameras[0].position.clone();
+					let temp3 = temp_campos.clone().multiplyScalar(0.5);
+					let temp4 = new THREE.Vector3(Math.round(temp3.x), Math.round(temp3.y), Math.round(temp3.z)).clone().multiplyScalar(2);
+					// console.log(temp4.clone().sub(temp_campos));
+					let temp5 = temp4.clone().sub(temp_campos);
+					let temp6 = new THREE.Vector3(temp5.x*temp2.x, temp5.y*temp2.y, temp5.z*temp2.z);
+					// temp6.multiply(temp6.clone().negate().multiplyScalar(0.8));
+					playerVelocity.addScaledVector(temp6, 0.06);
+				}
+				
+				const deltaPosition = playerVelocity.clone().multiplyScalar( deltaTime );
+				playerCollider.translate( deltaPosition );
+				if (playerCollider.center.x > 2*(mapWidth)+1) {
+					playerCollider.center.x -= 2*(mapWidth+1);
+					// playerCollider..x -= 2*(mapWidth+1);
+				} 
+				else if (playerCollider.center.x < -1) {
+					playerCollider.center.x += 2*(mapWidth+1);
+					// playerCollider.start.x += 2*(mapWidth+1);
+				} 
+				if(pacmanMesh){
+					pacmanMesh.position.copy(playerCollider.center); 
+				}
+
+				playerCollisions();
+				
+				cameras[0].position.copy(  playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
+				if (cameraToUse == 1) offset_second_camera(cameras[1], cameras[0]);
+				
+			}
+			
+			function playerSphereCollision( sphere, index ) {
+				if (!sphere) return;
+				
+				const center = playerCollider.center.clone();				
+				const sphere_center = sphere.collider.center;
+				
+				const r = playerCollider.radius + sphere.collider.radius;
+				const r2 = r * r;
+					
+				const d2 = center.distanceToSquared( sphere_center );
+
+				if ( d2 < r2 ) {
+					// Pacman Eats Fruit Collision
+					
+					const object = scene.getObjectByName( sphere.name );
+					if (waka){
+						//var audio = new Audio('pacmanSounds/waka1.wav');
+            			//audio.play();
+						waka = !waka; 
+					}
+					else{
+						//var audio = new Audio('pacmanSounds/waka2.wav');
+            			//audio.play();
+						waka = !waka; 
+					}
+
+					if (object.super) activateSuperMode();
+					
+					object.removeFromParent();
+					spheres.splice(index, 1);
+				}
+			}
+
+			function activateSuperMode(){
+				console.log("Super mode enabled?");
+
+				ghosts.forEach(ghost => {
+					ghost.getObjectByName("ghostTopScared").visible = true;
+					ghost.getObjectByName("ghostTopNormal").visible = false;
+					ghost.getObjectByName("ghostFrown").visible = true;
+					ghost.getObjectByName("ghosteyeBallsScared").visible = true;
+					ghost.getObjectByName("ghosteyeBallsNormal").visible = false; //þetta var true örugglega óvart
+					ghost.getObjectByName("ghostBot").material.color = ghost.ScaredMaterial.color;	//virkar
+					ghost.getObjectByName("ghostBot").material.emissive = ghost.ScaredMaterial.emissive; //virkar
+					ghost.isScared = true; 
+					ghost.scaredTime = 50; 
+				});
+				console.log("Super mode finalized?");
+			}
+
+			function deActivateSuperMode(ghost){
+				console.log("Super mode deactivating?");
+		
+				ghost.getObjectByName("ghostTopScared").visible = false;
+				ghost.getObjectByName("ghostTopNormal").visible = true;
+				ghost.getObjectByName("ghostFrown").visible = false;
+				ghost.getObjectByName("ghosteyeBallsScared").visible = false;
+				ghost.getObjectByName("ghosteyeBallsNormal").visible = true;
+				ghost.getObjectByName("ghostBot").visible = true; 
+				ghost.getObjectByName("ghostFrown").visible = true;
+				ghost.getObjectByName("ghostBot").material.color = ghost.NormalMaterial.color; 
+				ghost.getObjectByName("ghostBot").material.emissive = ghost.NormalMaterial.emissive;
+				ghost.getObjectByName("ghostTopNormal").material.color = ghost.NormalMaterial.color;
+				ghost.getObjectByName("ghostTopNormal").material.emissive = ghost.NormalMaterial.emissive;  
+				ghost.isScared = false; 
+				ghost.goingHome = false; 
+				ghost.scaredTime = 0; 
+				
+				console.log("Super mode deactivated?");
+			}
+
+			function playerGhostCollision(ghost) {
+				if (!ghost) return;
+				//console.log(ghost.collider);
+				const center = playerCollider.center.clone();				
+				const ghost_center = ghost.collider.end.clone().add(ghost.collider.start).multiplyScalar(0.5);
+				
+				const r = playerCollider.radius + ghost.collider.radius;
+				const r2 = r * r;
+				
+				const d2 = center.distanceToSquared( ghost_center );
+
+				if ( d2 < r2 ) {
+					
+					console.log("þú klesstir á draug");
+					if(!ghost.isScared){
+						playerDeath()	
+					}
+					else{
+						ghost.goingHome = true; 
+						ghost.getObjectByName("ghostBot").visible = false; 
+						
+						ghost.getObjectByName("ghostTopScared").visible = false;
+						ghost.getObjectByName("ghostFrown").visible = false;
+						  
+						
+						
+					}
+					
+					//playerCollider.translate(-100,-100,-100);
+				}
+			}
+			
+			function playerDeath(){
+				playerCollider.center.set( 20, 0.35, -10);
+				cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)));
+				cameras[0].rotation.set( 0, 0, 0 );
+				pacmanMesh.rotation.set( 0, Math.PI*0.5, 0 ); 
+				pacmanMesh.cameraRotating = 0;
+
+				// second_camera.position.copy( camera.position );
+				offset_second_camera(cameras[1], cameras[0]);
+				cameras[1].rotation.set(-Math.PI/5,0,0);
+
+			}
+			
+			function spheresCollisions() {
+				
+				for ( let i = 0, length = spheres.length; i < length; i ++ ) {
+					
+					const s1 = spheres[ i ];
+					
+					for ( let j = i + 1; j < length; j ++ ) {
+
+						const s2 = spheres[ j ];
+						
+						const d2 = s1.collider.center.distanceToSquared( s2.collider.center );
+						const r = s1.collider.radius + s2.collider.radius;
+						const r2 = r * r;
+						
+						if ( d2 < r2 ) {
+							
+							const normal = vector1.subVectors( s1.collider.center, s2.collider.center ).normalize();
+							const v1 = vector2.copy( normal ).multiplyScalar( normal.dot( s1.velocity ) );
+							const v2 = vector3.copy( normal ).multiplyScalar( normal.dot( s2.velocity ) );
+							
+							s1.velocity.add( v2 ).sub( v1 );
+							s2.velocity.add( v1 ).sub( v2 );
+							
+							const d = ( r - Math.sqrt( d2 ) ) / 2;
+
+							s1.collider.center.addScaledVector( normal, d );
+							s2.collider.center.addScaledVector( normal, - d );
+							
+						}
+						
+					}
+					
+				}
+				
+			}
+			
+			function updateSpheres( deltaTime ) {
+
+				spheres.forEach( (sphere, index) => {
+					/* 
+					sphere.collider.center.addScaledVector( sphere.velocity, deltaTime );
+
+					const result = worldOctree.sphereIntersect( sphere.collider );
+
+					if ( result ) {
+
+						sphere.velocity.addScaledVector( result.normal, - result.normal.dot( sphere.velocity ) * 1.5 );
+						sphere.collider.center.add( result.normal.multiplyScalar( result.depth ) );
+						
+					} else {
+						
+						sphere.velocity.y -= GRAVITY * deltaTime;
+
+					}
+					
+					const damping = Math.exp( - 1.5 * deltaTime ) - 1;
+					sphere.velocity.addScaledVector( sphere.velocity, damping );
+ */
+					playerSphereCollision( sphere, index );
+					
+				} );
+				
+				//spheresCollisions();
+
+				/* for ( const sphere of spheres ) {
+
+					sphere.mesh.position.copy( sphere.collider.center );
+					
+				} */
+				
+			}
+
+			function getForwardVector() {
+
+				cameras[0].getWorldDirection( playerDirection );
+				playerDirection.y = 0;
+				playerDirection.normalize();
+
+				return playerDirection;
+				
+			}
+
+			function offset_second_camera(second_cam, first_cam){
+				second_cam.position.copy(first_cam.position.clone().add(getForwardVector().clone().multiplyScalar(second_camera_offset[0]).add(new THREE.Vector3(0,second_camera_offset[1],0))));
+			}
+			offset_second_camera(cameras[1], cameras[0]);
+			// offset_second_camera(cameras[2], cameras[1]);
+			// board_camera = second_camera.clone();
+			
+			function getSideVector() {
+
+				cameras[0].getWorldDirection( playerDirection );
+				playerDirection.y = 0;
+				playerDirection.normalize();
+				playerDirection.cross( cameras[0].up );
+				
+				return playerDirection;
+				
+			}
+
+
+			function educatedMovement(ghost, possibleDir, location, new_direction){
+				var maxDot = 0;
+				var bestDir = -1;
+				var vectorHome;
+				for(let i = 0; i < possibleDir.length; i++){
+					vectorHome = location.clone().sub(ghost.position);
+					console.log(vectorHome);
+					var tempDot = vectorHome.dot(basicDir[possibleDir[i]]);
+				
+					if(tempDot > maxDot){
+						maxDot = tempDot; 
+						bestDir = i; 
+					} 
+				}
+				
+				//console.log("það er best að fara í átt " + bestDir, "innfeldið er" + maxDot);
+				if (bestDir != -1){
+					new_direction = possibleDir[bestDir];
+				}
+				return new_direction;
+			}
+			
+		
+			function moveGhosts(deltaTime){
+				if(ghosts[0] == undefined){
+					return;
+				}
+				if(ghosts[1] == undefined){
+					return;
+				}
+				if(ghosts[2] == undefined){
+					return;
+				}
+				if(ghosts[3] == undefined){
+					return;
+				}
+
+				ghosts.forEach(ghost => {
+					if (ghost.goingHome  &&  ghost.position.clone().sub(new THREE.Vector3(0.0, ghost.position.y, 0.0)).distanceToSquared(ghostHome) < 0.01){
+						deActivateSuperMode(ghost);
+					}
+					// ghost.children[1].rotation.y += deltaTime;
+					// if (ghost.is_turning){
+					// 	ghost.getObjectByName("ghostBot").rotation.y += deltaTime - Math.sign(ghost.cameraRotation)/cameraRotationSpeed*STEPS_PER_FRAME;
+					// }else{
+					// 	ghost.getObjectByName("ghostBot").rotation.y += deltaTime;
+					// }
+					// playerVelocity.clone().multiplyScalar( deltaTime );
+					
+					let possibleDir = []; 
+					//ghost.direction = 1; // 0-3
+
+					if (ghost.is_turning) return;  // continue; frekar?  Annars bara einhvern betri foreach rithátt.
+					let spatial_change = basicDir[ghost.direction].clone().multiplyScalar(deltaTime*getGhostSpeed(ghost));
+					ghost.position.add(spatial_change);
+					ghost.collider.translate(spatial_change);
+					if (ghost.position.x > 2*(mapWidth)+1){
+						ghost.position.x -= 2*(mapWidth+1);
+						console.log(ghost.position);
+						ghost.collider.translate(new THREE.Vector3(-2*(mapWidth+1), 0 ,0));
+						console.log(ghost.collider.end);
+					} 
+					else if (ghost.position.x < -1){
+						ghost.position.x += 2*(mapWidth+1);
+						console.log(ghost.position);
+						ghost.collider.translate(new THREE.Vector3(2*(mapWidth+1), 0 ,0));
+						console.log(ghost.collider.end);
+					}
+					const forward_vector = basicDir[ghost.direction].clone();
+					const dot_product = forward_vector.dot(ghost.position);
+					let intersection = false;
+					if ( Math.abs(Math.round(dot_product/2)*2 - dot_product) < 0.05 ){
+						// If we are in the vicinity of a possible intersection
+						// console.log("I am close to intersection, can_turn: " + ghost.can_turn);
+						// console.log("I am close to intersection");
+						// return;
+						if (ghost.can_turn == false) return;  // continue; ?
+						for(let i = 0; i < basicDir.length; i++){
+							raycaster.set(ghost.position.clone(), basicDir[i].clone());
+							let cast = (ghost.goingHome ? worldOctreeForGhosts : worldOctree).rayIntersect(raycaster.ray);
+							if (!cast  ||  cast.distance > 1.5){
+								possibleDir.push(i);
+								if (Math.abs(i - ghost.direction) % 2 == 1) intersection = true;
+							}
+							
+						}
+						
+						
+						// console.log("intersection: " + intersection);  // is always false;
+						// console.log("RayIntersect: " + worldOctree.rayIntersect(raycaster.ray));
+						if (intersection){
+							ghost.is_turning = true;  // Needs to be set to false in turning function.
+							ghost.can_turn = false;
+
+							// Remove back if other ways possible
+							if(!ghost.isScared || ghost.goingHome){
+								if (possibleDir.length > 1){
+									possibleDir = possibleDir.filter(function(item){
+										return item !== (ghost.direction + 2) % 4;
+									})
+								}
+							}
+							
+
+							let new_direction = possibleDir[Math.floor(Math.random()*possibleDir.length)];
+							
+
+
+
+
+							
+							// if(ghost.goingHome){
+								
+							// 	var maxDot = 0;
+							// 	var bestDir = -1;
+							// 	var vectorHome;
+							// 	for(let i = 0; i < possibleDir.length; i++){
+							// 		vectorHome = ghostHome.clone().sub(ghost.position);
+							// 		console.log(vectorHome);
+							// 		var tempDot = vectorHome.dot(basicDir[possibleDir[i]]);
+								
+							// 		if(tempDot > maxDot){
+							// 			maxDot = tempDot; 
+							// 			bestDir = i; 
+							// 		} 
+							// 	}
+								
+							// 	//console.log("það er best að fara í átt " + bestDir, "innfeldið er" + maxDot);
+							// 	if (bestDir != -1){
+							// 		new_direction = possibleDir[bestDir];
+							// 	}
+								
+							// }
+							
+							// if (ghost.goingHome || (pacmanMesh && Math.random() < 0.05)) new_direction = educatedMovement(ghost, possibleDir, ghost.goingHome ? ghostHome : pacmanMesh.position, new_direction);
+							if (ghost.goingHome) new_direction = educatedMovement(ghost, possibleDir, ghostHome, new_direction);
+							else if (ghost.isScared) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position.clone().add(ghost.position.clone().sub(pacmanMesh.position).multiplyScalar(2)), new_direction);
+							else if (pacmanMesh && Math.random() < 0.2) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position, new_direction);
+
+
+							
+							if (new_direction == ghost.direction) return; // continue; kannski frekar?
+							else if (Math.abs(new_direction - ghost.direction) == 2){
+								// 180° turn
+								ghost.cameraRotation = Math.PI;
+								ghost.cameraRotating = ghost.goingHome ? 2 : cameraRotationSpeed*2;
+							} else if (new_direction - ghost.direction == -1  ||  new_direction - ghost.direction == 3){
+								// right turn
+								ghost.cameraRotation = Math.PI/2;
+								ghost.cameraRotating = ghost.goingHome ? 2 : cameraRotationSpeed;
+							} else {
+								// left turn
+								ghost.cameraRotation = -Math.PI/2;
+								ghost.cameraRotating = ghost.goingHome ? 2 : cameraRotationSpeed;
+							}
+							ghost.direction = new_direction;
+						} else if (possibleDir.length == 1){
+							// If we are in a dead-end
+							ghost.is_turning = true;  // Needs to be set to false in turning function.
+							ghost.can_turn = false;
+							ghost.cameraRotation = Math.PI;
+							ghost.cameraRotating = ghost.goingHome ? 2 : cameraRotationSpeed*2;
+							ghost.direction = (ghost.direction + 2) % 4;
+						}
+					}
+					else {
+						ghost.can_turn = true;  // Becomes false a few moments after turning such that we don't turn on same intersection again.
+					}
+					if(ghost.scaredTime > 0 && ghost.isScared){
+						ghost.scaredTime -= deltaTime; 
+					}
+					if (ghost.scaredTime < 0 && ghost.isScared && !ghost.goingHome){
+						deActivateSuperMode(ghost);
+					}
+
+					//console.log(ghost.scaredTime);
+					playerGhostCollision(ghost);
+				
+				});
+			}
+
+			
+
+			// const control_info = {left: false, right: false};
+			var cameraToUse = 0;
+			const raycaster = new THREE.Raycaster();
+			function controls( deltaTime ) {
+				if (!pacmanMesh) return;
+
+				let temp = getSideVector().clone();
+				let temp2 = new THREE.Vector3(Math.round(temp.x*temp.x), Math.round(temp.y*temp.y), Math.round(temp.z*temp.z));
+
+				// var octreeObjects = worldOctree.search(raycaster.ray.origin, raycaster.ray.far, true, raycaster.ray.direction);
+				// intersections = raycaster.intersectOctreeObjects( pacmap );
+				// console.log(intersections);
+				// console.log(octreeObjects);
+				// console.log(scene);
+				// console.log(raycaster.intersectObjects(scene.children));
+				// console.log(raycaster.intersectObjects(scenemap.children));
+				// var childlen = scene.children.length;
+				// console.log(raycaster.intersectObjects(scene.children));
+				//----------------------------
+				// raycaster.set(camera.position.clone(), temp.clone());
+				// //if (worldOctree.rayIntersect(raycaster.ray)) console.log("Right is: " + worldOctree.rayIntersect(raycaster.ray).distance);
+				// const right = worldOctree.rayIntersect(raycaster.ray).distance;
+				// raycaster.set(camera.position.clone(), temp.clone().negate());
+				// const left = worldOctree.rayIntersect(raycaster.ray).distance;
+				// if (!worldOctree.rayIntersect(raycaster.ray)) console.log("NoneRight");
+				// if (worldOctree.rayIntersect(raycaster.ray).distance > 1.5){
+				// 	console.log("Right is clear");
+				// }
+				// raycaster.set(camera.position.clone(), temp.clone().negate());
+				// if (!worldOctree.rayIntersect(raycaster.ray)) console.log("NoneLeft");
+				// if (worldOctree.rayIntersect(raycaster.ray).distance > 1.5){
+				// 	console.log("Left is clear");
+				// } 
+				//-----------------------------
+				// console.log(worldOctree.rayIntersect(raycaster.ray));
+
+				// --------------------
+				// const playerColliderGhost = playerCollider.clone();
+				// playerColliderGhost.set(playerColliderGhost.start, playerColliderGhost.end, playerColliderGhost.radius*0.5);
+				// playerColliderGhost.translate(temp2.multiplyScalar(1));
+
+				// // console.log(scene.children);
+				// const result = worldOctree.capsuleIntersect( playerColliderGhost );
+				// if (!result) console.log("Left is clear");
+				// --------------------
+
+				// for (var i = 0; i < childlen; i++){
+				// 	if (scene.children[i].name == "Scene"  ||  true){
+				// 		console.log(raycaster.intersectObject(scene.children[i]));
+				// 	}
+				// }
+				// console.log(scene.children[3]);
+				// console.log(scene.children[5]);
+				// if (scene.children[6]) console.log(scene.children[6]);
+				// console.log(scene.children[103]);
+
+				// gives a bit of air control
+				const speedDelta = deltaTime * ( playerOnFloor ? 40 : 8 );
+
+			 	// if ( keyStates[ 'KeyW' ] ) {
+
+				playerVelocity.add( getForwardVector().multiplyScalar( speedDelta*0.5 ) );	
+				// 	// camera.rotation.y = 0;
+				
+
+				// } 
+
+				/* if ( keyStates[ 'KeyS' ] ) {
+
+					playerVelocity = -playerVelocity;
+					//camera.rotation.y = +=Math.PI;
+			
+
+				} */
+
+				if ( keyStates[ 'KeyE' ] ) {
+					keyStates["keyE"] = false;
+					
+					if (keyDown){
+						console.log(scene);
+						console.log("'E' was pressed...");
+                    	cameraToUse = (cameraToUse + 1) % cameras.length;
+						console.log("new cam to use: " + cameraToUse);
+						pacmanMesh.visible = cameraToUse != 0;
+						if (cameraToUse == 1) {
+							offset_second_camera(cameras[1], cameras[0]);
+							cameras[1].rotation.y = cameras[0].rotation.y;
+						}
+						if (cameraToUse == 2) {
+							cameras[1].position.copy(new THREE.Vector3(20,11,5));
+							cameras[1].rotation.y = 0.0; 
+						}
+                    	keyDown = false;
+                	}
+				
+				}
+
+				if ( keyStates[ 'KeyA' ] && pacmanMesh.cameraRotating == 0) {
+
+					raycaster.set(cameras[0].position.clone(), temp.clone().negate());
+					const cast = worldOctree.rayIntersect(raycaster.ray);
+					// const test = worldOctree.rayIntersect(raycaster.ray).distance;
+					// console.log("Left dist cast: " + cast.distance + "\t & left: " + left + "\t & instantagain: " + test);
+					if ( !cast  ||  cast.distance > 1.5 ){ //left > 1.5){
+						// console.log("left was: " + cast.distance);
+						pacmanMesh.cameraRotation = 0.5* Math.PI;
+						pacmanMesh.cameraRotating = cameraRotationSpeed; 
+						//camera.rotation.y += 0.5* Math.PI;
+						keyStates[ 'KeyA' ] = false;
+					}
+
+					// playerVelocity.add( getSideVector().multiplyScalar( - speedDelta ) );
+					// control_info.left = true;
+					// getSideVector();
+				} 
+				// else {
+				// 	control_info.left = false;
+				// }
+
+				if ( keyStates[ 'KeyD' ] && pacmanMesh.cameraRotating == 0) {
+
+					raycaster.set(cameras[0].position.clone(), temp.clone());
+					const cast = worldOctree.rayIntersect(raycaster.ray);
+					// const test = worldOctree.rayIntersect(raycaster.ray).distance;
+					// console.log("Right dist cast: " + cast.distance + "\t & right: " + right + "\t & instantagain: " + test);
+					if ( !cast  ||  cast.distance > 1.5){ // right > 1.5){
+						// console.log("right was: " + cast.distance);
+						pacmanMesh.cameraRotation = -0.5* Math.PI;
+						pacmanMesh.cameraRotating = cameraRotationSpeed; 
+						keyStates[ 'KeyD' ] = false;
+					}
+
+					// playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
+					//camera.rotation.y += 1.5* Math.PI;
+					// control_info.right = true;
+					//playerDirection.y = -1;
+					// getSideVector();
+				} 
+				// else {
+				// 	control_info.right = false;
+				// }
+
+				if ( playerOnFloor ) {
+
+					if ( keyStates[ 'Space' ] ) {
+						song.play();
+						playerVelocity.y = 15;
+
+					}
+
+				}
+
+			}
+					// Instantiate a loader
+			//const mapLoader = new GLTFLoader();
+
+			
+			//const loader3 = new GLTFLoader();
+
+			// Load a glTF resource
+			var pacmanMesh = undefined; 
+			loader.load(
+				// resource URL
+				'animatedPacman.gltf',
+				// called when the resource is loaded
+				function ( gltf ) {
+					/* gltf.scene.position.x = 8; 
+					gltf.scene.position.z = -8; 
+					gltf.scene.position.y = 1; */
+					gltf.scene.rotation.y = 0.5 * Math.PI; 
+					gltf.scene.scale.set(0.7, 0.7, 0.7); 
+					
+					pacmanMesh = gltf.scene; 
+					pacmanMesh.visible = false;
+					pacmanMesh.cameraRotating = 0;
+					pacmanMesh.cameraRotation = 0;
+					var anim = gltf.animations; 
+					console.log("það eru " + anim.length + " animations!")
+					mixer = new THREE.AnimationMixer( gltf.scene );
+					
+					//spilar öll animationin, blönduð saman. 
+       	 			gltf.animations.forEach( ( clip ) => {
+						console.log("starting animation")
+						mixer.clipAction( clip).setEffectiveTimeScale(4.0);
+            			mixer.clipAction( clip ).play();
+          
+        			} );
+					gltf.scene.traverse( child => {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+							if ( child.material.map ) {
+								
+								//child.material.map.anisotropy = 4;
+
+							}
+
+						}
+
+					} );
+
+					//bætir við hlutnum í senuna
+					scene.add( gltf.scene );
+					//worldOctree.fromGraphNode( gltf.scene );
+
+				},
+				// called while loading is progressing
+				function ( xhr ) {
+
+					console.log( "Animated_Pacman: " + ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+				},
+				// called when loading has errors
+				function ( error ) {
+
+					console.log( 'An error happened' );
+
+				}
+
+				
+			);
+
+			// function rotateObj(pacman_or_ghost, bool_is_pacman, deltaTime){
+			// 	if (pacman_or_ghost == undefined) return;
+			// 	if (pacman_or_ghost.cameraRotating != 0){
+			// 		if (bool_is_pacman){
+			// 			cameras[0].rotation.y += pacman_or_ghost.cameraRotation/cameraRotationSpeed;
+			// 			if (cameraToUse == 1) cameras[1].rotation.y += pacman_or_ghost.cameraRotation/cameraRotationSpeed;
+			// 		}
+			// 		else {
+			// 			pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*20 - pacman_or_ghost.cameraRotation/cameraRotationSpeed;
+			// 		}
+			// 		pacman_or_ghost.rotation.y += pacman_or_ghost.cameraRotation/cameraRotationSpeed;
+					
+			// 		pacman_or_ghost.cameraRotating -= 1;
+			// 		// if(pacmanMesh){
+			// 		// 	pacmanMesh.rotation.y += cameraRotation/cameraRotationSpeed;
+			// 		// }
+			// 	}
+			// 	else if (!bool_is_pacman){
+			// 		pacman_or_ghost.is_turning = false;
+			// 		pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*20;
+			// 	}
+
+			// }
+
+			function rotateObj(pacman_or_ghost, bool_is_pacman, deltaTime){
+				if (pacman_or_ghost == undefined) return;
+				if (pacman_or_ghost.cameraRotating != 0){
+					if (bool_is_pacman){
+						cameras[0].rotation.y += pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+						if (cameraToUse == 1) cameras[1].rotation.y += pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					}
+					else {
+						pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*20*getGhostSpeed(pacman_or_ghost) - pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					}
+					pacman_or_ghost.rotation.y += pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					
+					pacman_or_ghost.cameraRotation -= pacman_or_ghost.cameraRotation/pacman_or_ghost.cameraRotating;
+					pacman_or_ghost.cameraRotating -= 1;
+					// if(pacmanMesh){
+					// 	pacmanMesh.rotation.y += cameraRotation/cameraRotationSpeed;
+					// }
+				}
+				else if (!bool_is_pacman){
+					pacman_or_ghost.is_turning = false;
+					pacman_or_ghost.getObjectByName("ghostBot").rotation.y += deltaTime*20*getGhostSpeed(pacman_or_ghost);
+				}
+
+			}
+
+			function getGhostSpeed(ghost){
+				return (ghost.isScared ? (ghost.goingHome ? 3.0 : 0.7) : 1.2);
+			}
+
+			// Instantiate a loader
+			//const loader4 = new GLTFLoader();
+
+			// Load a glTF resource
+			loader.load(
+				// resource URL
+				'scaredGhost1.gltf',
+				// called when the resource is loaded
+				function ( gltf ) {
+					gltf.scene.position.x = 16; 
+					gltf.scene.position.z = -22; 
+					gltf.scene.position.y = 1.4;
+					gltf.scene.scale.set(0.6, 0.6, 0.6);
+					const scared_color = {r: 0.0, g: 0.0, b: 1.0};
+					const scared_emissive = {r: 0.0, g: 0.0, b: 0.3};
+					
+					gltf.scene.ScaredMaterial = gltf.scene.getObjectByName("ghostBot").material.clone();
+					gltf.scene.ScaredMaterial.color = scared_color;
+					gltf.scene.ScaredMaterial.emissive = scared_emissive;
+					gltf.scene.NormalMaterial = gltf.scene.ScaredMaterial.clone();
+
+					console.log(gltf.scene);
+				
+					// gltf.scene.name = "Blinky";
+					// ghosts.push(gltf.scene.clone());
+
+					function newGhost(name, color, emissive, posxadditive){
+						// NOTE: posxadditive changes the prefab between each successive call
+						gltf.scene.name = name;
+						gltf.scene.NormalMaterial = gltf.scene.NormalMaterial.clone(); 
+						gltf.scene.NormalMaterial.color = color;
+						gltf.scene.NormalMaterial.emissive = emissive;
+
+						var curr_ghost_child = gltf.scene.getObjectByName("ghostBot");
+						// curr_ghost_child.material = curr_ghost_child.material.clone();
+						// curr_ghost_child.material.color = color;
+						// curr_ghost_child.material.emissive = emissive;
+						curr_ghost_child.material = gltf.scene.NormalMaterial;
+						
+						curr_ghost_child = gltf.scene.getObjectByName("ghostTopNormal");
+						// curr_ghost_child.material = curr_ghost_child.material.clone();
+						// curr_ghost_child.material.color = color;
+						// curr_ghost_child.material.emissive = emissive;
+						curr_ghost_child.material = gltf.scene.NormalMaterial;
+						gltf.scene.getObjectByName("ghostTopScared").material = gltf.scene.ScaredMaterial;
+						
+						gltf.scene.position.x += posxadditive;
+						ghosts.push(gltf.scene.clone());
+						ghosts[ghosts.length-1].ScaredMaterial = gltf.scene.ScaredMaterial;
+						ghosts[ghosts.length-1].NormalMaterial = gltf.scene.NormalMaterial.clone(); 
+					}
+
+					newGhost("Blinky", {r: 1.0, g: 0.0, b: 0.0}, {r: 0.30, g: 0.0, b: 0.0}, 0);
+					newGhost("Pinky", {r: 1.0, g: 0.0, b: 1.0}, {r: 0.20, g: 0.0, b: 0.20}, 2);
+					newGhost("Inky", {r: 0.0, g: 200/255, b: 1.0}, {r: 0.0, g: 0.18, b: 0.25}, 4);
+					newGhost("Clyde", {r: 1.0, g: 50/255, b: 0.0}, {r: 0.25, g: 0.1, b: 0.0}, 2);
+
+					// console.log("ghosts[0]:");
+					// console.log(ghosts[0]);
+
+					// color: {r: 0.0, g: 0.0, b: 1.0}
+					// emissive: {r: 0.0, g: 0.0, b: 0.3}
+					
+					// gltf.scene.name = "Pinky";
+					// // for (var i = 0; i < gltf.scene.children.length;)
+					// // var curr_ghost_child = gltf.scene.getElementByName("ghostBot");
+					// // curr_ghost_child.material = curr_ghost_child.material.clone();
+					// // curr_ghost_child.material.color = {r: 1.0, g: 0.0, b: 1.0};
+					// // curr_ghost_child.material.emissive = {r: 0.20, g: 0.0, b: 0.20};
+					// // curr_ghost_child = gltf.scene.getElementByName("ghostTopNormal");
+					// // curr_ghost_child.material = curr_ghost_child.material.clone();
+					// // curr_ghost_child.material.color = {r: 1.0, g: 0.0, b: 1.0};
+					// // curr_ghost_child.material.emissive = {r: 0.20, g: 0.0, b: 0.20};
+
+					
+					// gltf.scene.children[1].material = gltf.scene.children[1].material.clone();
+					// gltf.scene.children[1].material.color = {r: 1.0, g: 0.0, b: 1.0};
+					// gltf.scene.children[1].material.emissive = {r: 0.20, g: 0.0, b: 0.20};
+					// gltf.scene.children[4].material = gltf.scene.children[4].material.clone();
+					// gltf.scene.children[4].material.color = {r: 1.0, g: 0.0, b: 1.0};
+					// gltf.scene.children[4].material.emissive = {r: 0.20, g: 0.0, b: 0.20};
+				
+					// gltf.scene.position.x += 2; 
+					// ghosts.push(gltf.scene.clone());
+					
+					// gltf.scene.name = "Inky";
+					// // for (var i = 0; i < gltf.scene.children.length;)
+				
+					// gltf.scene.children[1].material = gltf.scene.children[1].material.clone();
+					// gltf.scene.children[1].material.color = {r: 0.0, g: 200/255, b: 1.0};
+					// gltf.scene.children[1].material.emissive = {r: 0.0, g: 0.18, b: 0.25};
+					// gltf.scene.children[4].material = gltf.scene.children[4].material.clone();
+					// gltf.scene.children[4].material.color = {r: 0.0, g: 200/255, b: 1.0};
+					// gltf.scene.children[4].material.emissive = {r: 0.0, g: 0.18, b: 0.25};
+
+					// gltf.scene.position.x += 4;
+					// ghosts.push(gltf.scene.clone());
+					
+					// gltf.scene.name = "Clyde";
+					// // for (var i = 0; i < gltf.scene.children.length;)
+					
+					// gltf.scene.children[1].material = gltf.scene.children[1].material.clone();
+					// gltf.scene.children[1].material.color = {r: 1.0, g: 50/255, b: 0.0};
+					// gltf.scene.children[1].material.emissive = {r: 0.25, g: 0.1, b: 0.0};
+					// gltf.scene.children[4].material = gltf.scene.children[4].material.clone();
+					// gltf.scene.children[4].material.color = {r: 1.0, g: 50/255, b: 0.0};
+					// gltf.scene.children[4].material.emissive = {r: 0.25, g: 0.1, b: 0.0};
+				
+					// gltf.scene.position.x += 2; 
+					// ghosts.push(gltf.scene.clone());
+					
+					
+					//bætir við hlutnum í senuna
+					//scene.add( gltf.scene );
+					for(let i = 0; i<ghosts.length; i++){
+						ghosts[i].traverse( child => {
+
+							if ( child.isMesh ) {
+
+								child.castShadow = true;
+								child.receiveShadow = true;
+								
+								// if ( child.material.map ) {
+									
+								// 	child.material.map.anisotropy = 4;
+
+								// }
+
+							}
+							if(child.name == "ghostTopScared" || child.name == "ghosteyeBallsScared"){
+								// console.log("Ghost visibility before and after change: Working with: " + child.name);
+								// console.log(ghosts[i].visible);
+								child.visible = false;
+								// console.log(ghosts[i].visible);
+							}
+
+							/* if (child.isGroup){
+								
+							} */
+
+						} );
+						ghosts[i].visible = true; 
+						ghosts[i].collider = new Capsule( new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y-1.3,ghosts[i].position.z ), new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y,ghosts[i].position.z) , 0.4 );
+						ghosts[i].direction = 3;
+						ghosts[i].cameraRotation = 0;
+						ghosts[i].cameraRotating = 0;	
+						ghosts[i].goingHome = false; 
+						ghosts[i].isScared = false; 
+						ghosts[i].scaredTime = 0; 
+						ghosts[i].followingPlayer = false; 
+
+						scene.add(ghosts[i]);
+					}
+
+					
+				},
+				// called while loading is progressing
+				function ( xhr ) {
+
+					console.log("Ghosts: " + ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+				},
+				// called when loading has errors
+				function ( error ) {
+
+					console.log( 'An error happened' );
+
+				}
+			);
+
+			
+	
+			
+
+			function teleportPlayerIfOob() {
+
+				if ( cameras[0].position.y <= - 25 ) {
+
+					playerCollider.center.set( 20, 0.35, -10);
+					cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)));
+					cameras[0].rotation.set( 0, 0, 0 );
+					
+					// second_camera.position.copy( camera.position );
+					offset_second_camera(cameras[1], cameras[0]);
+					cameras[1].rotation.set(-Math.PI/5,0,0);
+
+				}
+
+			}
+			
+
+			// Load a glTF resource
+			loader.load(
+				// resource URL
+				'pacmanMap1cullingTest.gltf',
+				// called when the resource is loaded
+				function ( gltf ) {
+					gltf.scene.position.x = 0; 
+					gltf.scene.position.z = 0; 
+					gltf.scene.position.y = 0;
+					//bætir við hlutnum í senuna
+					gltf.scene.name = "Level";
+
+					worldOctree.fromGraphNode( gltf.scene );
+					gltf.scene.getObjectByName("blockEntrance").removeFromParent();
+					worldOctreeForGhosts.fromGraphNode(gltf.scene);
+					
+					scene.add( gltf.scene );
+					// pacmap = gltf.scene;
+					// scenemap.add( gltf.scene );
+
+					gltf.scene.traverse( child => {
+						if ( child.isMesh ) {
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+							if (child.name == "NormalBlocking" || child.name == "superFood"){
+								child.castShadow = false;
+								child.receiveShadow = false;
+								child.visible = false;
+							}
+
+							if ( child.material.map ) {
+								child.material.map.anisotropy = 4;
+							}
+						}
+					} );
+
+					const helper = new OctreeHelper( worldOctree );
+					helper.visible = false;
+					scene.add( helper );
+
+					const gui = new GUI( { width: 200 } );
+					gui.add( { debug: false }, 'debug' )
+						.onChange( function ( value ) {
+							helper.visible = value;
+						} );
+					fillMap();
+					animate(); 
+					
+				},
+				// called while loading is progressing
+				function ( xhr ) {
+					console.log( ("map " + xhr.loaded / xhr.total * 100 ) + '% loaded' );
+				},
+				// called when loading has errors
+				function ( error ) {
+					console.log( 'An error happened' );
+				}
+			);
+			// Instantiate a loader
+			
+
+
+			function animate() {
+				//console.log("hello");
+				//if (ghosts[0]) console.log(ghosts[0].position);
+				const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
+
+				// if (Math.random() < 0.001){
+				// 	console.log(cameras[1]);
+				// 	console.log(cameras[2]);
+				// }
+
+				// let tempvec = new THREE.Vector3();
+				// cameras[2].getWorldDirection(tempvec);
+				// console.log("Board_camera direction: ");
+				// console.log(tempvec);
+				// cameras[1].getWorldDirection(tempvec);
+				// console.log("Second_camera direction: ");
+				// console.log(tempvec);
+				// we look for collisions in substeps to mitigate the risk of
+				// an object traversing another too quickly for detection.
+
+				for ( let i = 0; i < STEPS_PER_FRAME; i ++ ) {
+
+					controls( deltaTime );
+
+					updatePlayer( deltaTime );
+					
+					updateSpheres( deltaTime );
+					
+					moveGhosts(deltaTime*3);
+
+					teleportPlayerIfOob();
+
+				}
+
+			
+				//var delta = clock.getDelta();
+
+				if ( mixer!= undefined ) {
+					//spilar animationið
+					if(!stuck){
+						mixer.update( deltaTime*2 );
+					}
+					
+
+				}
+				
+
+				// moveGhosts(deltaTime*STEPS_PER_FRAME*3); 
+				
+				rotateObj(pacmanMesh, true, deltaTime);
+				ghosts.forEach(ghost => {
+					rotateObj(ghost, false, deltaTime);
+				});
+
+				// if(cameraRotating != 0){
+				// 	cameraRotating -= 1; 
+				// 	camera.rotation.y += cameraRotation/cameraRotationSpeed;
+				// 	second_camera.rotation.y += cameraRotation/cameraRotationSpeed;
+				// 	if(pacmanMesh){
+				// 		pacmanMesh.rotation.y += cameraRotation/cameraRotationSpeed;
+				// 	}
+				// }
+
+
+
+
+				// console.log(camera.position);
+				// let temp = getSideVector();
+				// let temp2 = new THREE.Vector3(Math.round(temp.x*temp.x), Math.round(temp.y*temp.y), Math.round(temp.z*temp.z))
+				// console.log(temp2);
+				// let temp_campos = camera.position.clone();
+				// let temp3 = temp_campos.clone().multiplyScalar(0.5);
+				// let temp4 = new THREE.Vector3(Math.round(temp3.x), Math.round(temp3.y), Math.round(temp3.z)).clone().multiplyScalar(2);
+				// console.log(temp4.clone().sub(temp_campos));
+				// console.log(camera.position);
+				
+				let temp_cam_to_use = Math.min(cameraToUse, 1);
+				// console.log(renderer);
+				renderer.clear(); 
+				scene.position.set((mapWidth+1)*2, 0, 0);
+				
+
+				scene.getObjectByName("MainLight").position.x -= (mapWidth+1)*2;
+				renderer.render( scene, cameras[temp_cam_to_use]);
+
+				scene.position.set(-(mapWidth+1)*2, 0, 0);
+				scene.getObjectByName("MainLight").position.x += (mapWidth+1)*4;
+				renderer.render( scene, cameras[temp_cam_to_use]);
+
+				scene.position.set(0, 0, 0);
+				scene.getObjectByName("MainLight").position.x -= (mapWidth+1)*2;
+				
+				renderer.render( scene, cameras[temp_cam_to_use]);
+				// renderer.render( scene, second_camera );
+				// renderer.render( scene, board_camera );
+
+				stats.update();
+
+				requestAnimationFrame( animate );
+				
+				
+			}
+
+		</script>
+	</body>
+</html>
