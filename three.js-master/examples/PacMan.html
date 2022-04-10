@@ -195,7 +195,6 @@
 			var stuck = false; 
 			const ghostHome = new THREE.Vector3(20.0,0.0,-22.0); // NOTE: was -24.0
 			
-		
 			
 			const STEPS_PER_FRAME = 5;
 			
@@ -213,36 +212,6 @@
 			const playerCollider = new THREE.Sphere( new THREE.Vector3( 20, 0.35, -10), 0.7 );
 			
 
-			let composer, effectSobel;
-			
-			const bloomPass = new UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
-			bloomPass.threshold = params.bloomThreshold;
-			bloomPass.strength = params.bloomStrength;
-			bloomPass.radius = params.bloomRadius;
-			
-			effectSobel = new ShaderPass( SobelOperatorShader );
-			/* effectSobel.uniforms[ 'resolution' ].value.x = window.innerWidth * window.devicePixelRatio;
-			effectSobel.uniforms[ 'resolution' ].value.y = window.innerHeight * window.devicePixelRatio;
-			 */
-			function addpasses(composer, renderscene){
-				composer.addPass( effectSobel );
-				composer.addPass( renderscene );
-				composer.addPass( bloomPass );
-				return composer;
-			}
-			const renderScene = new RenderPass( scene, cameras[0] );
-			const renderScene_second_cam = new RenderPass(scene, cameras[1]);
-			// const renderScene_board_cam = new RenderPass(scene, cameras[2]);
-			composer = new EffectComposer( renderer );
-			composer.addPass( effectSobel );
-			composer.addPass( renderScene );
-			composer.addPass( bloomPass );
-			
-			var composers = [];
-			composers.push(addpasses(new EffectComposer(renderer), renderScene));
-			composers.push(addpasses(new EffectComposer(renderer), renderScene_second_cam));
-			composers.push(addpasses(new EffectComposer(renderer), renderScene_second_cam));
-			
 			cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
 			const GhostCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
 
