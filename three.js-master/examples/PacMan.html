@@ -50,7 +50,6 @@
 
 			import { FontLoader } from './jsm/loaders/FontLoader.js';
 
-			//import { MeshPhongMaterial } from './jsm/shaders/SobelOperatorShader.js';
 
 
 			const second_camera_offset = [-6, 3];  // How far back (negative) & how much higher.
@@ -68,6 +67,20 @@
 			scene.fog = new THREE.Fog( 0x000000, 0, 20 );
 			
 			const camera = new THREE.PerspectiveCamera( 100, window.innerWidth / window.innerHeight, 0.1, 50 );
+			const listener = new THREE.AudioListener();
+			camera.add( listener );
+
+
+			//camera.add(new THREE.AudioListener());
+
+			//camera.children[0].name = "listener"; 
+			
+			//const listener = camera.children[0];
+			//const listener = new THREE.AudioListener();
+			//console.log("listener er ");
+			//console.log(listener);
+			/* listener.name = "listener";
+			camera.add(listener) */
 			const second_camera = new THREE.PerspectiveCamera( 70, window.innerWidth/window.innerHeight, 0.1, 60);
 			const board_camera = new THREE.PerspectiveCamera( 180, window.innerWidth/window.innerHeight, 0.1, 50);  
 			camera.rotation.order = 'YXZ';
@@ -88,17 +101,27 @@
 			var lives = 3; 
 			var text2 = document.createElement('div');
 			text2.style.position = 'absolute';
-			//text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
 			text2.style.width = 100;
 			text2.style.height = 100;
-			//text2.style.backgroundColor = "blue";
 			text2.innerHTML = "SCORE: " + score;
 			text2.style.top = 50 + 'px';
 			text2.style.left = 5 + 'px';
 			document.body.appendChild(text2);
+
+			var text1 = document.createElement('div');
+			text1.style.position = 'absolute';
+			text1.style.width = 100;
+			text1.style.height = 100;
+			text1.innerHTML = "LIVES: " + lives;
+			text1.style.top = 70 + 'px';
+			text1.style.left = 5 + 'px';
+			document.body.appendChild(text1);
+
+
+
 			
 
-			const listener = new THREE.AudioListener();
+		
 			/* for(let i = 0; i<cameras.length; i++){
 				cameras[i].add( listener );
 			} */
@@ -175,17 +198,21 @@
 			var NUM_SPHERES = 0;
 			const SPHERE_RADIUS = 0.2;
 			var mixer = undefined; 
-			var song = new Audio('pacmanSounds/pacmanSong.mp3');
-			var waka1 = new Audio('pacmanSounds/waka1.wav');
-			var waka2 = new Audio('pacmanSounds/waka2.wav');
-			var superWaka = new Audio('pacmanSounds/superWaka.ogg');
-			var mixer2 = undefined; 
+			//var song = new Audio('pacmanSounds/pacmanSong.mp3');
+			//var waka1 = new Audio('pacmanSounds/waka1.wav');
+			//waka1.volume = 0.3; 
+			//var waka2 = new Audio('pacmanSounds/waka2.wav');
+			//waka2.volume = 0.3; 
+			//var superWaka = new Audio('pacmanSounds/superWaka.ogg');
+			//superWaka.volume = 0.6;
+			//var mixer2 = undefined; 
 			var basicDir = [];
 			basicDir.push(new THREE.Vector3(1.0,0.0,0.0));  // East
 			basicDir.push(new THREE.Vector3(0.0,0.0,1.0));  // South
 			basicDir.push(new THREE.Vector3(-1.0,0.0,0.0)); // West
 			basicDir.push(new THREE.Vector3(0.0,0.0,-1.0)); // North
 			const basicDirKeys = ["KeyD", "KeyS", "KeyA", "KeyW"];
+			const basicDirArrowKeys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"];
 			var player_direction_index = 3;
 			var keyDown; 
 			var ghosts = [];
@@ -195,6 +222,7 @@
 			var stuck = false; 
 			const ghostHome = new THREE.Vector3(20.0,0.0,-22.0); // NOTE: was -24.0
 			
+		
 			
 			const STEPS_PER_FRAME = 5;
 			
@@ -212,6 +240,8 @@
 			const playerCollider = new THREE.Sphere( new THREE.Vector3( 20, 0.35, -10), 0.7 );
 			
 
+			
+		
 			cameras[0].position.copy( playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
 			const GhostCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
 
@@ -320,6 +350,7 @@
 			const vector3 = new THREE.Vector3();
 			
 			document.addEventListener( 'keydown', ( event ) => {
+				//song.play();
 				keyStates[ event.code ] = true;
 				keyDown = true; 
 			} );
@@ -384,6 +415,23 @@
 				}
 				//console.log(stuck);
 			}
+
+
+			function ghostWallCollisions(ghost) {
+
+				const result = worldOctreeForGhosts.capsuleIntersect(ghost.collider);
+
+				if ( result ) {
+					//ghost.position.add( result.normal.multiplyScalar( result.depth));
+					ghost.position.copy(ghost.homePos);
+					console.log(ghost.position)
+					ghost.collider.translate(ghost.homePos.clone().sub(ghost.collider.start));
+					console.log()
+					//.sub(new THREE.Vector3(0,1.4,0))
+					//ghost.collider.translate(result.normal.multiplyScalar( result.depth));
+				}
+		
+			}
 			
 			let NomGroup = new THREE.Group();
 			NomGroup.name = "NomNom";
@@ -409,7 +457,7 @@
 						// Plane at height 4 represents Superfruit
 						// Plane at height 2.1 represents Boxes, no fruit
 						// Ground at height 0 represents ordinary fruit
-						console.log(dist);
+						//console.log(dist);
 						sphere.super = false;
 						if (dist < 1.5){
 							sphere.geometry = superSphereGeometry; 
@@ -430,8 +478,26 @@
 						});
 					}
 				}
+				const audioLoader = new THREE.AudioLoader();
+					const sound = new THREE.PositionalAudio( listener );
+					audioLoader.load( 'pacmanSounds/ghost1.ogg', function( buffer ) {
+					sound.setBuffer( buffer );
+					sound.setRefDistance( 20 );
+					sound.setLoop( true );
+					sound.name = "sound";
+					//sound.play();
+					spheres[1].mesh.add(sound);
+					console.log("WHAFASDJGFNAISDFNAUSDFNIASNDFIPANSDIPFAPSNIDF");
+					console.log(spheres[1]);
+					spheres[1].mesh.children[0].play();
+					//ghosts[i].getObjectByName("ghostBot").add(sound);
+
+				});
+
+				
 				scene.add(NomGroup);
-				console.log("the number of spheres is: " + NUM_SPHERES);
+
+				//console.log("the number of spheres is: " + NUM_SPHERES);
 			}
 			
 			function updatePlayer( deltaTime ) {
@@ -489,12 +555,16 @@
 				} 
 				if(pacmanMesh){
 					pacmanMesh.position.copy(playerCollider.center); 
-					pacmanMesh.getObjectByName("listener").position.copy(playerCollider.center); 
+					
 				}
 				
 				playerCollisions();
 				
 				cameras[0].position.copy(  playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
+				//console.log(listener);	
+			/* 	listener.position.copy(cameras[0].position);
+				listener.rotation.copy(cameras[0].rotation); */
+				
 				if (cameraToUse == 1) offset_second_camera(cameras[1], cameras[0]);
 				
 			}
@@ -517,10 +587,10 @@
 			
 					if (object.super) {
 						score += 50;
-						superWaka.play();
+						//superWaka.play();
 						activateSuperMode();
 					} else {
-						(waka ? waka1 : waka2).play();
+						//(waka ? waka1 : waka2).play();
 						waka = !waka;
 						score += 10;
 					}
@@ -544,15 +614,16 @@
 			function activateSuperMode(){
 				supermode_multiplier = 1;
 				supermode_power = 0;
-				console.log("Super mode enabled?");
+				/* console.log("Super mode enabled?");
 				// console.log(basicDir[player_direction_index]);
-				console.log(getForwardVector());
+				console.log(getForwardVector()); */
 
 				ghosts.forEach(ghost => {
 					if(!ghost.goingHome){
 						ghost.getObjectByName("ghostTopScared").visible = true;
 						ghost.getObjectByName("ghostTopNormal").visible = false;
-						ghost.getObjectByName("ghostTopNormal").sound.pause();
+						//ghost.getObjectByName("ghostTopNormal").getObjectByName("sound").pause();
+						//ghost.getObjectByName("ghostTopNormal").sound.pause();
 						ghost.getObjectByName("ghostFrown").visible = true;
 						ghost.getObjectByName("ghosteyeBallsScared").visible = true;
 						ghost.getObjectByName("ghosteyeBallsNormal").visible = false; //þetta var true örugglega óvart
@@ -562,16 +633,17 @@
 						ghost.scaredTime = 50; 
 					}
 				});
-				console.log("Super mode finalized?");
+			/* 	console.log("Super mode finalized?"); */
 			}
 
 			function deActivateSuperMode(ghost){
-				console.log("Super mode deactivating?");
+				/* console.log("Super mode deactivating?"); */
 		
 				ghost.getObjectByName("ghostTopScared").visible = false;
 				ghost.getObjectByName("ghostTopScared").material.emissive = scared_emissive;
 				ghost.getObjectByName("ghostTopNormal").visible = true;
-				ghost.getObjectByName("ghostTopNormal").sound.play();
+				//ghost.getObjectByName("ghostTopNormal").getObjectByName("sound").play();
+				//ghost.getObjectByName("ghostTopNormal").sound.play();
 				ghost.getObjectByName("ghostFrown").visible = false;
 				ghost.getObjectByName("ghosteyeBallsScared").visible = false;
 				ghost.getObjectByName("ghosteyeBallsNormal").visible = true;
@@ -586,7 +658,7 @@
 				ghost.scaredTime = 0; 
 				
 				
-				console.log("Super mode deactivated?");
+			/* 	console.log("Super mode deactivated?"); */
 			}
 
 			const MAX_SCORE_DISPLAY_TIME = 1.5;  // sec
@@ -605,7 +677,7 @@
 
 				if ( d2 < r2 ) {
 					
-					console.log("þú klesstir á draug");
+				/* 	console.log("þú klesstir á draug"); */
 					if(!ghost.isScared){
 						PlayerDied = true;
 						// playerDeath()	
@@ -669,27 +741,43 @@
 
 				console.log(ghosts);
 				var num = 0; 
+				for (var i = 0; i < ghost_names_and_deviations; i++){
+					console.log(ghost_names_and_deviations[i].name + " " + ghosts[i].direction);
+				}
+
 				for (const elem of ghost_names_and_deviations){
-					console.log("Fired!");
-					let ghost = scene.getObjectByName(elem.name);
+					// console.log("Matrix4: ");
 					
-					ghost.position.copy(ghost_first_placing_pos.clone().add(new THREE.Vector3(elem.dev, 0.0, 0.0)));
+					let ghost = scene.getObjectByName(elem.name);
+					// let mat = new THREE.Matrix4().compose(ghost.position.clone().negate(), new THREE.Quaternion().identity(), new THREE.Vector3(1,1,1));
+					// console.log(mat);
+					console.log(elem.name + ghost.direction);
+				/* 	console.log(ghost_first_placing_pos.clone().add(new THREE.Vector3(elem.dev, 0.0, 0.0))) */
+					
+					// ghost.position.applyMatrix4(mat);
+					// mat = new THREE.Matrix4().compose(ghost_first_placing_pos.clone().add(new THREE.Vector3(elem.dev, 0.0, 0.0)), new THREE.Quaternion().identity(), new THREE.Vector3(1,1,1));
+					console.log(ghost.position.x + "," + ghost.position.y + "," + ghost.position.z);
+					ghost.position.copy(ghost.homePos);
+					ghost.updateMatrix();
+					console.log(ghost.position.x + "," + ghost.position.y + "," + ghost.position.z);
+					// ghost.position.applyMatrix4(mat);
+					// ghost.position.copy(ghost_first_placing_pos.clone().add(new THREE.Vector3(elem.dev, 0.0, 0.0)));
 					// ghost.collider.position.set(ghost.position);
 					delete ghost.collider;
-					
-					
-					ghost.collider = new Capsule( new THREE.Vector3(ghost.position.x,ghost.position.y-1.3,ghost.position.z ), new THREE.Vector3(ghost.position.x,ghost.position.y,ghost.position.z) , 0.4 );
+					ghost.collider = new Capsule( new THREE.Vector3(ghost.position.x,ghost.position.y,ghost.position.z ), new THREE.Vector3(ghost.position.x,ghost.position.y,ghost.position.z) , 0.4 );
 					deActivateSuperMode(ghost);
 					respawnTime = 2; 
 
 					num++; 
-					console.log(ghost.can_turn);
+					/* console.log(ghost.can_turn); */
 					ghost.can_turn = true; 
-					console.log(ghost.can_turn);
+					/* console.log(ghost.can_turn); */
 					//ghost.is_turning = false; 
 					/* 	ghost.direction = 3;
 					ghost.cameraRotation = 0;
 					ghost.cameraRotating = 0;	 */
+					/* console.log(elem.name + ghost.direction);
+					console.log(ghost); */
 				}
 				console.log(ghosts);
 
@@ -783,7 +871,7 @@
 				var vectorHome;
 				for(let i = 0; i < possibleDir.length; i++){
 					vectorHome = location.clone().sub(ghost.position);
-					console.log(vectorHome);
+					/* console.log(vectorHome); */
 					var tempDot = vectorHome.dot(basicDir[possibleDir[i]]);
 				
 					if(tempDot > maxDot){
@@ -801,8 +889,8 @@
 			
 		
 			function moveGhosts(deltaTime){
-				respawnTime-=deltaTime; 
-				if(respawnTime >0) return; 
+				respawnTime -= deltaTime; 
+				if(respawnTime > 0) return; 
 				if(ghosts[0] == undefined){
 					return;
 				}
@@ -820,6 +908,7 @@
 					if (ghost.goingHome  &&  ghost.position.clone().sub(new THREE.Vector3(0.0, ghost.position.y, 0.0)).distanceToSquared(ghostHome) < 0.01){
 						deActivateSuperMode(ghost);
 					}
+				
 
 					if(ghost.scaredTime > 0 && ghost.isScared){
 						ghost.scaredTime -= deltaTime; 
@@ -832,28 +921,30 @@
 						let temp = 0.02+ 0.02*Math.sin(ghosts[0].scaredTime*7);
 						ghost.getObjectByName("ghostBot").material.emissive = {r: temp, g: temp, b: 0.3 + temp};
 						ghost.getObjectByName("ghostTopScared").material.emissive = {r: temp, g: temp, b: 0.3 + temp};
-						console.log("halló????")
+						/* console.log("halló????") */
 					}
 					
-					let possibleDir = []; 
+					let possibleDir = [];
+					
 					//ghost.direction = 1; // 0-3
 					
 					playerGhostCollision(ghost);
+
 					if (ghost.is_turning) return;
 					let spatial_change = basicDir[ghost.direction].clone().multiplyScalar(deltaTime*getGhostSpeed(ghost));
 					ghost.position.add(spatial_change);
 					ghost.collider.translate(spatial_change);
 					if (ghost.position.x > 2*(mapWidth)+1){
 						ghost.position.x -= 2*(mapWidth+1);
-						console.log(ghost.position);
+						/* console.log(ghost.position); */
 						ghost.collider.translate(new THREE.Vector3(-2*(mapWidth+1), 0 ,0));
-						console.log(ghost.collider.end);
+						/* console.log(ghost.collider.end); */
 					} 
 					else if (ghost.position.x < -1){
 						ghost.position.x += 2*(mapWidth+1);
-						console.log(ghost.position);
+						/* console.log(ghost.position); */
 						ghost.collider.translate(new THREE.Vector3(2*(mapWidth+1), 0 ,0));
-						console.log(ghost.collider.end);
+						/* console.log(ghost.collider.end); */
 					}
 
 					const forward_vector = basicDir[ghost.direction].clone();
@@ -865,6 +956,7 @@
 						for(let i = 0; i < basicDir.length; i++){
 							raycaster.set(ghost.position.clone(), basicDir[i].clone());
 							let cast = (ghost.goingHome ? worldOctreeForGhosts : worldOctree).rayIntersect(raycaster.ray);
+							console.log("RAYCASTING.......................................");
 							if (!cast  ||  cast.distance > 1.5){
 								possibleDir.push(i);
 								if (Math.abs(i - ghost.direction) % 2 == 1) intersection = true;
@@ -891,7 +983,7 @@
 							// Dead ghosts go home, scared ghosts flee from Pac-Man & normal ghosts make educated decisions some of the time.
 							if (ghost.goingHome) new_direction = educatedMovement(ghost, possibleDir, ghostHome, new_direction);
 							else if (ghost.isScared) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position.clone().add(ghost.position.clone().sub(pacmanMesh.position).multiplyScalar(2)), new_direction);
-							else if (pacmanMesh && Math.random() < 0.2) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position, new_direction);
+							else if (pacmanMesh && Math.random() < 0.4) new_direction = educatedMovement(ghost, possibleDir, pacmanMesh.position, new_direction);
 
 							
 							if (new_direction == ghost.direction) return;
@@ -908,6 +1000,7 @@
 								ghost.cameraRotation = -Math.PI/2;
 								ghost.cameraRotating = Math.max(Math.round((ghost.goingHome ? 0.05 : 1)*cameraRotationSpeed), min_no_of_rotation_frames);
 							}
+							console.log(ghost.name + ": old_direction: " + ghost.direction + " new_direction: " + new_direction);
 							ghost.direction = new_direction;
 						} else if (possibleDir.length == 1){
 							// If we are in a dead-end
@@ -921,7 +1014,7 @@
 					else {
 						ghost.can_turn = true;  // Becomes true a few moments after turning such that we don't turn on same intersection again.
 					}
-					
+					ghostWallCollisions(ghost); 
 
 				});
 			}
@@ -946,7 +1039,7 @@
 				playerVelocity.add( basicDir[player_direction_index].clone().multiplyScalar( speedDelta*0.5 ) );
 
 				function pacman_go(i){
-					if (!keyStates[basicDirKeys[i]]) return;
+					if (!(keyStates[basicDirKeys[i]] || keyStates[basicDirArrowKeys[i]])) return;
 					if (i == player_direction_index) return;
 					raycaster.set(cameras[0].position.clone(), basicDir[i]);
 					const cast = worldOctree.rayIntersect(raycaster.ray);
@@ -957,6 +1050,7 @@
 						// console.log("PACMAN-MESH.cameraRotating: " + pacmanMesh.cameraRotating);
 						player_direction_index = i;
 						keyStates[basicDirKeys[i]] = false;
+						keyStates[basicDirArrowKeys[i]] = false;
 					}
 				}
 
@@ -966,7 +1060,7 @@
 					}
 				}
 				else{
-					if ( keyStates[ 'KeyS' ] && pacmanMesh.cameraRotating == 0 ) {
+					if ( (keyStates[ 'KeyS' ] || keyStates["ArrowDown"]) && pacmanMesh.cameraRotating == 0 ) {
 						raycaster.set(cameras[0].position.clone(), getForwardVector().clone().negate());
 						const cast = worldOctree.rayIntersect(raycaster.ray);
 						
@@ -975,11 +1069,12 @@
 							pacmanMesh.cameraRotating = Math.max(Math.round(cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
 							player_direction_index = (player_direction_index + 2) % 4;
 							keyStates[ 'KeyS' ] = false;
+							keyStates["ArrowDown"] = false;
 						}
 					}
 					
 					
-					if ( keyStates[ 'KeyA' ] && pacmanMesh.cameraRotating == 0) {
+					if ( (keyStates[ 'KeyA' ] || keyStates["ArrowLeft"]) && pacmanMesh.cameraRotating == 0 ) {
 						raycaster.set(cameras[0].position.clone(), temp.clone().negate());
 						const cast = worldOctree.rayIntersect(raycaster.ray);
 						
@@ -988,11 +1083,12 @@
 							pacmanMesh.cameraRotating = Math.max(Math.round(cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
 							player_direction_index = (player_direction_index + 3) % 4;
 							keyStates[ 'KeyA' ] = false;
+							keyStates["ArrowLeft"] = false;
 						}
 					} 
 	
 					
-					if ( keyStates[ 'KeyD' ] && pacmanMesh.cameraRotating == 0) {
+					if ( (keyStates[ 'KeyD' ] || keyStates["ArrowRight"]) && pacmanMesh.cameraRotating == 0) {
 						raycaster.set(cameras[0].position.clone(), temp.clone());
 						const cast = worldOctree.rayIntersect(raycaster.ray);
 						
@@ -1001,6 +1097,7 @@
 							pacmanMesh.cameraRotating = Math.max(Math.round(cameraRotationSpeed*pacman_frames), min_no_of_rotation_frames);
 							player_direction_index = (player_direction_index + 1) % 4;
 							keyStates[ 'KeyD' ] = false;
+							keyStates["ArrowRight"] = false;
 						}
 					}
 				}
@@ -1040,8 +1137,8 @@
 
 				if ( playerOnFloor ) {
 					if ( keyStates[ 'Space' ] ) {
-						song.play();
-						playerVelocity.y = 15;
+						
+						//playerVelocity.y = 15;
 					}
 				}
 			}
@@ -1070,7 +1167,7 @@
 					pacmanMesh.cameraRotating = 0;
 					pacmanMesh.cameraRotation = 0;
 					var anim = gltf.animations; 
-					console.log("það eru " + anim.length + " animations!")
+					
 					mixer = new THREE.AnimationMixer( gltf.scene );
 					
 					//spilar öll animationin, blönduð saman. 
@@ -1084,19 +1181,15 @@
 						if ( child.isMesh ) {
 							child.castShadow = true;
 							child.receiveShadow = true;
-							if ( child.material.map ) {
-								//child.material.map.anisotropy = 4;
-							}
+							/* if(child.name == "newpacmanBotCut"){
+								listener.name = "listener";
+								child.add(listener);
+							} */
+						
 						}
 					} );
 					
-					//gltf.scene.add(listener);
-					//bætir við hlutnum í senuna
-
-					listener.name = "listener";
 	
-
-					gltf.scene.add(listener);	
 					scene.add( gltf.scene );
 					//worldOctree.fromGraphNode( gltf.scene );
 
@@ -1169,7 +1262,7 @@
 
 
 			function getGhostSpeed(ghost){
-				return (ghost.isScared ? (ghost.goingHome ? 3.0 : 0.7) : 1.2);
+				return (ghost.isScared ? (ghost.goingHome ? 3.0 : 1.0) : 1.7);
 			}
 
 			// Instantiate a loader
@@ -1214,6 +1307,7 @@
 						
 						gltf.scene.position.x += posxadditive;
 						ghosts.push(gltf.scene.clone());
+						ghosts[ghosts.length-1].homePos = gltf.scene.position.clone(); 
 						ghosts[ghosts.length-1].ScaredMaterial = gltf.scene.ScaredMaterial;
 						ghosts[ghosts.length-1].NormalMaterial = gltf.scene.NormalMaterial.clone(); 
 					}
@@ -1241,7 +1335,7 @@
 
 						} );
 						ghosts[i].visible = true; 
-						ghosts[i].collider = new Capsule( new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y-1.3,ghosts[i].position.z ), new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y,ghosts[i].position.z) , 0.4 );
+						ghosts[i].collider = new Capsule( new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y,ghosts[i].position.z ), new THREE.Vector3(ghosts[i].position.x,ghosts[i].position.y,ghosts[i].position.z) , 0.4 );
 						ghosts[i].direction = 3;
 						ghosts[i].cameraRotation = 0;
 						ghosts[i].cameraRotating = 0;	
@@ -1250,18 +1344,9 @@
 						ghosts[i].scaredTime = 0; 
 						// ghosts[i].followingPlayer = false; 
 
-						const audioLoader = new THREE.AudioLoader();
-						const sound = new THREE.PositionalAudio( listener );
-						audioLoader.load( 'pacmanSounds/ghost1.ogg', function( buffer ) {
-							sound.setBuffer( buffer );
-							sound.setRefDistance( 5 );
-							//sound.setDirectionalCone( 180, 230, 0.1 );
-							sound.setLoop( true );
-							sound.play();
-							ghosts[i].getObjectByName("ghostTopNormal").sound = sound;
-
-						});
 						
+						//ghosts[i].getObjectByName("ghostTopNormal").add(sound);
+						//sound.play();
 						//sound.play();
 
 						scene.add(ghosts[i]);
@@ -1375,12 +1460,9 @@
 			
 
 			var fps = 30;
-
+		
 			function animate() {
 				const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
-				// const deltaTime = clock.getDelta() / STEPS_PER_FRAME;
-				// console.log(stats.frames*1000/(stats.time - stats.prevTime)); // ( frames * 1000 ) / ( time - prevTime )
-				// console.log(Math.round(stats.getfps()));
 				fps = 0.95*fps + 0.05*stats.getfps();
 				cameraRotationSpeed = fps*0.4;
 				// console.log(Math.round(fps));
@@ -1393,6 +1475,7 @@
 					
 					updateSpheres( deltaTime );
 					moveGhosts( deltaTime*3 );
+				
 					teleportPlayerIfOob();
 					scoreHover( deltaTime );
 					if (PlayerDied) break;
@@ -1443,6 +1526,7 @@
 
 				stats.update();
 				text2.innerHTML = "SCORE: " + score;
+				text1.innerHTML = "LIVES: " + lives;
 				if (PlayerDied) playerDeath();
 				requestAnimationFrame( animate );
 			
