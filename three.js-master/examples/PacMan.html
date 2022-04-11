@@ -67,20 +67,7 @@
 			scene.fog = new THREE.Fog( 0x000000, 0, 20 );
 			
 			const camera = new THREE.PerspectiveCamera( 100, window.innerWidth / window.innerHeight, 0.1, 50 );
-			const listener = new THREE.AudioListener();
-			camera.add( listener );
-
-
-			//camera.add(new THREE.AudioListener());
-
-			//camera.children[0].name = "listener"; 
-			
-			//const listener = camera.children[0];
-			//const listener = new THREE.AudioListener();
-			//console.log("listener er ");
-			//console.log(listener);
-			/* listener.name = "listener";
-			camera.add(listener) */
+		
 			const second_camera = new THREE.PerspectiveCamera( 70, window.innerWidth/window.innerHeight, 0.1, 60);
 			const board_camera = new THREE.PerspectiveCamera( 180, window.innerWidth/window.innerHeight, 0.1, 50);  
 			camera.rotation.order = 'YXZ';
@@ -116,16 +103,6 @@
 			text1.style.top = 70 + 'px';
 			text1.style.left = 5 + 'px';
 			document.body.appendChild(text1);
-
-
-
-			
-
-		
-			/* for(let i = 0; i<cameras.length; i++){
-				cameras[i].add( listener );
-			} */
-			
 
 			// create the PositionalAudio object (passing in the listener)
 			
@@ -198,14 +175,14 @@
 			var NUM_SPHERES = 0;
 			const SPHERE_RADIUS = 0.2;
 			var mixer = undefined; 
-			//var song = new Audio('pacmanSounds/pacmanSong.mp3');
-			//var waka1 = new Audio('pacmanSounds/waka1.wav');
-			//waka1.volume = 0.3; 
-			//var waka2 = new Audio('pacmanSounds/waka2.wav');
-			//waka2.volume = 0.3; 
-			//var superWaka = new Audio('pacmanSounds/superWaka.ogg');
-			//superWaka.volume = 0.6;
-			//var mixer2 = undefined; 
+			var song = new Audio('pacmanSounds/pacmanSong.mp3');
+			var waka1 = new Audio('pacmanSounds/waka1.wav');
+			waka1.volume = 0.3; 
+			var waka2 = new Audio('pacmanSounds/waka2.wav');
+			waka2.volume = 0.3; 
+			var superWaka = new Audio('pacmanSounds/superWaka.ogg');
+			superWaka.volume = 0.6;
+			var mixer2 = undefined; 
 			var basicDir = [];
 			basicDir.push(new THREE.Vector3(1.0,0.0,0.0));  // East
 			basicDir.push(new THREE.Vector3(0.0,0.0,1.0));  // South
@@ -350,7 +327,7 @@
 			const vector3 = new THREE.Vector3();
 			
 			document.addEventListener( 'keydown', ( event ) => {
-				//song.play();
+				song.play();
 				keyStates[ event.code ] = true;
 				keyDown = true; 
 			} );
@@ -477,24 +454,7 @@
 							name: sphere.name,
 						});
 					}
-				}
-				const audioLoader = new THREE.AudioLoader();
-					const sound = new THREE.PositionalAudio( listener );
-					audioLoader.load( 'pacmanSounds/ghost1.ogg', function( buffer ) {
-					sound.setBuffer( buffer );
-					sound.setRefDistance( 20 );
-					sound.setLoop( true );
-					sound.name = "sound";
-					//sound.play();
-					spheres[1].mesh.add(sound);
-					console.log("WHAFASDJGFNAISDFNAUSDFNIASNDFIPANSDIPFAPSNIDF");
-					console.log(spheres[1]);
-					spheres[1].mesh.children[0].play();
-					//ghosts[i].getObjectByName("ghostBot").add(sound);
-
-				});
-
-				
+				}	
 				scene.add(NomGroup);
 
 				//console.log("the number of spheres is: " + NUM_SPHERES);
@@ -561,9 +521,6 @@
 				playerCollisions();
 				
 				cameras[0].position.copy(  playerCollider.center.clone().add(new THREE.Vector3(0,0.3,0)) );
-				//console.log(listener);	
-			/* 	listener.position.copy(cameras[0].position);
-				listener.rotation.copy(cameras[0].rotation); */
 				
 				if (cameraToUse == 1) offset_second_camera(cameras[1], cameras[0]);
 				
@@ -587,10 +544,10 @@
 			
 					if (object.super) {
 						score += 50;
-						//superWaka.play();
+						superWaka.play();
 						activateSuperMode();
 					} else {
-						//(waka ? waka1 : waka2).play();
+						(waka ? waka1 : waka2).play();
 						waka = !waka;
 						score += 10;
 					}
@@ -622,8 +579,6 @@
 					if(!ghost.goingHome){
 						ghost.getObjectByName("ghostTopScared").visible = true;
 						ghost.getObjectByName("ghostTopNormal").visible = false;
-						//ghost.getObjectByName("ghostTopNormal").getObjectByName("sound").pause();
-						//ghost.getObjectByName("ghostTopNormal").sound.pause();
 						ghost.getObjectByName("ghostFrown").visible = true;
 						ghost.getObjectByName("ghosteyeBallsScared").visible = true;
 						ghost.getObjectByName("ghosteyeBallsNormal").visible = false; //þetta var true örugglega óvart
@@ -642,8 +597,6 @@
 				ghost.getObjectByName("ghostTopScared").visible = false;
 				ghost.getObjectByName("ghostTopScared").material.emissive = scared_emissive;
 				ghost.getObjectByName("ghostTopNormal").visible = true;
-				//ghost.getObjectByName("ghostTopNormal").getObjectByName("sound").play();
-				//ghost.getObjectByName("ghostTopNormal").sound.play();
 				ghost.getObjectByName("ghostFrown").visible = false;
 				ghost.getObjectByName("ghosteyeBallsScared").visible = false;
 				ghost.getObjectByName("ghosteyeBallsNormal").visible = true;
@@ -1181,11 +1134,6 @@
 						if ( child.isMesh ) {
 							child.castShadow = true;
 							child.receiveShadow = true;
-							/* if(child.name == "newpacmanBotCut"){
-								listener.name = "listener";
-								child.add(listener);
-							} */
-						
 						}
 					} );
 					
